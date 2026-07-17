@@ -14,7 +14,7 @@ A self-contained, parameterized Databricks lab: a digital-lending geospatial fra
 | **Geospatial analysis** | `vw_geo_hotspots_kring`, `vw_geo_province_choropleth`, `vw_geo_distance_bands`, `vw_geo_device_ring_clusters` — k-ring density, choropleth aggregates, distance-band fraud rates, device-ring clusters |
 | **Metric View** | `metrics_lending` — governed measures: disbursed, active borrowers, NPL ratio, PAR30, approval rate, fraud rate, fraud amount — all by province/month/credit band |
 | **10 Looker Studio views** | `vw_ls_portfolio_overview`, `vw_ls_disbursement_by_month`, `vw_ls_portfolio_by_province`, `vw_ls_fraud_by_province`, `vw_ls_fraud_hotspots`, `vw_ls_hotspots_kring`, `vw_ls_distance_bands`, `vw_ls_fraud_rings`, `vw_ls_impossible_travel`, `vw_ls_fraud_by_month` — lat/lon + `latlong` combined field ready for BI maps |
-| ✅ **AI/BI Fraud Dashboard** | **Geo Fraud Command Center** — auto-deployed by Run All; link printed at the end. Geospatial hotspot map, fraud KPIs, province breakdown, impossible-travel table, month-by-month trend. |
+| ✅ **AI/BI Fraud Dashboard** | **Geo Fraud Command Center** — auto-deployed by `bundle deploy`. Geospatial hotspot map, fraud KPIs, province breakdown, impossible-travel table, month-by-month trend. |
 
 Fraud is driven by **geospatial signals only**: impossible travel, location mismatch, device rings, foreign IP, and H3 hotspot concentration — realistic and probabilistic (not perfectly labelled).
 
@@ -22,11 +22,9 @@ Fraud is driven by **geospatial signals only**: impossible travel, location mism
 
 ## Quickstart
 
-### Path A — DAB (recommended, runs entirely on serverless)
-
-Everything runs on serverless and is fully self-contained — no SQL warehouse
-routing, no manual template rendering. Designed to clone-and-run on a **Databricks
-Free Edition** workspace.
+Deployment is a Declarative Asset Bundle (DAB). Everything runs on serverless and
+is fully self-contained — no SQL warehouse routing, no manual template rendering.
+Designed to clone-and-run on a **Databricks Free Edition** workspace.
 
 **Requirements:** [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) **v0.281.0+** (native dashboard `dataset_catalog`/`dataset_schema`), installed and authenticated.
 
@@ -58,25 +56,11 @@ The install job runs two serverless tasks in sequence:
 1. **generate_data** — generates ~20k customers / ~30k applications / ~18k loans / ~200k repayments and writes base tables to Unity Catalog
 2. **run_sql** — reads the bundled SQL files from the workspace and executes all layers (H3 index, fraud/geo views, metric view, Looker views) via serverless Spark — no SQL warehouse required
 
-`bundle deploy` also deploys two AI/BI dashboards. The dashboard JSON uses bare table
-names; DAB injects your catalog/schema via `dataset_catalog`/`dataset_schema` at deploy:
+`bundle deploy` also deploys two AI/BI dashboards. Their dataset queries are
+schema-qualified (`geo_fraud_lab.<table>`) and DAB supplies the leading catalog via
+`dataset_catalog`, so they resolve as `<catalog>.geo_fraud_lab.<table>`:
 - **Geo Fraud Command Center** — geospatial fraud analysis (hotspot map, impossible-travel, device rings, distance bands, trend)
 - **Tunaiku Lending 360** — portfolio overview (disbursed, NPL, PAR30, approval rate by province)
-
----
-
-### Path B — Notebook (no CLI required)
-
-Use the one-click notebook. No local setup required.
-
-1. Open your Databricks workspace and go to **Workspace → Import**
-2. Paste this URL and click **Import**:
-   ```
-   https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/notebooks/install_lab.py
-   ```
-3. Open the imported notebook, attach **Serverless** compute (or a DBR 17.3+ cluster), and click **Run All**
-
-> The notebook has two widgets: **catalog** (default: `workspace`) and **schema** (default: `geo_fraud_lab`). Change them if needed before running. It downloads the generator + SQL from GitHub, builds everything on serverless, and deploys both dashboards.
 
 ---
 
@@ -84,11 +68,11 @@ Use the one-click notebook. No local setup required.
 
 - Databricks workspace with **Unity Catalog** enabled (**Free Edition** works out of the box)
 - **Serverless** compute — required for `ST_*` geospatial functions, `H3`, and Metric Views (or a **DBR 17.3+ LTS** cluster)
-- For Path A: the schema is auto-created; the catalog (`workspace` on Free Edition) must already exist
+- The schema is auto-created; the catalog (`workspace` on Free Edition) must already exist
 
 ---
 
-## Configuration (Path A / DAB)
+## Configuration
 
 All parameters are DAB variables — pass with `--var="name=value"` on `bundle deploy` / `bundle run`:
 
@@ -138,7 +122,7 @@ Run [`sql/99_uninstall.sql`](sql/99_uninstall.sql) in the Databricks SQL editor 
 geo-fraud-lab/
 ├── README.md
 ├── .gitignore
-├── databricks.yml              # DAB root config (Path A)
+├── databricks.yml              # DAB root config
 ├── resources/
 │   ├── install_job.yml         # DAB job definition (2-task serverless install pipeline)
 │   └── dashboard.yml           # DAB dashboard resources (native dataset_catalog/schema)
@@ -146,7 +130,6 @@ geo-fraud-lab/
 │   ├── geo_fraud.lvdash.json      # AI/BI Geo Fraud Command Center (auto-deployed)
 │   └── tunaiku_c360.lvdash.json   # AI/BI Tunaiku Lending 360 (auto-deployed)
 ├── notebooks/
-│   ├── install_lab.py          # One-click notebook installer (Path B — import URL → Run All)
 │   ├── 01_generate_data.py     # DAB task: generate + write base tables (serverless)
 │   └── 02_run_sql.py           # DAB task: execute bundled SQL layers on serverless
 ├── scripts/
