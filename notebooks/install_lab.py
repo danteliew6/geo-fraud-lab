@@ -212,10 +212,62 @@ except Exception as e:
 # MAGIC | Metric View | `metrics_lending` — fraud rate, NPL ratio, PAR30, approval rate, disbursed IDR, active borrowers |
 # MAGIC | Looker Studio views | `vw_ls_portfolio`, `vw_ls_fraud_map`, `vw_ls_impossible_travel`, `vw_ls_fraud_rings`, `vw_ls_province_fraud`, `vw_ls_trend`, `vw_ls_geo_analysis`, `vw_ls_distance_bands` |
 # MAGIC
+# MAGIC ### What was deployed
+# MAGIC | Item | Details |
+# MAGIC |---|---|
+# MAGIC | AI/BI Dashboard | **Geo Fraud Command Center** — auto-deployed; URL printed at the end of Run All |
+# MAGIC
 # MAGIC ### Next steps
+# MAGIC - Open the **AI/BI Dashboard** link printed at the end of Run All.
 # MAGIC - Connect **Looker Studio** (or any BI tool) to your workspace SQL warehouse and point it at the schema above.
 # MAGIC - See [`docs/looker_studio_integration.md`](https://github.com/danteliew6/geo-fraud-lab/blob/main/docs/looker_studio_integration.md) for step-by-step setup.
 # MAGIC - Explore fraud signals: `SELECT * FROM {catalog}.{schema}.vw_fraud_signals LIMIT 100`
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 8: Deploy AI/BI Fraud Dashboard
+dashboard_url = None
+try:
+    from databricks.sdk import WorkspaceClient
+    import urllib.request
+
+    _DASH_TEMPLATE_URL = "https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/dashboards/geo_fraud_dashboard.json"
+    with urllib.request.urlopen(_DASH_TEMPLATE_URL) as _r:
+        _spec = _r.read().decode()
+
+    _spec = _spec.replace("{{CATALOG}}", catalog).replace("{{SCHEMA}}", schema)
+
+    _wh_id = ""
+    if warehouse_http_path:
+        _wh_id = warehouse_http_path.strip("/").split("/")[-1]
+    else:
+        try:
+            _w = WorkspaceClient()
+            _wh = next(
+                (wh for wh in _w.warehouses.list() if wh.enable_serverless_compute),
+                None,
+            )
+            if _wh is None:
+                _wh = next(iter(_w.warehouses.list()), None)
+            if _wh:
+                _wh_id = _wh.id
+        except Exception:
+            pass
+
+    _spec = _spec.replace("{{WAREHOUSE_ID}}", _wh_id)
+
+    _w = WorkspaceClient()
+    _dash = _w.lakeview.create(
+        serialized_dashboard=_spec,
+        display_name="Geo Fraud Command Center",
+    )
+    _w.lakeview.publish(dashboard_id=_dash.dashboard_id)
+    _workspace_host = spark.conf.get("spark.databricks.workspaceUrl")
+    dashboard_url = f"https://{_workspace_host}/dashboardsv3/{_dash.dashboard_id}/published"
+    print(f"✅ Dashboard deployed: {dashboard_url}")
+except Exception as _e:
+    print(f"⚠️ Dashboard deploy failed: {_e}")
+    print("   (Tables and views are installed — deploy the dashboard manually via the Databricks UI)")
 
 # COMMAND ----------
 
@@ -226,3 +278,5 @@ if http_path:
     print(f"  Looker Studio HTTP Path: {http_path}")
 else:
     print("  Looker Studio HTTP Path: (not set — find it in Settings → SQL Warehouses → Connection details)")
+if dashboard_url:
+    print(f"  AI/BI Dashboard: {dashboard_url}")

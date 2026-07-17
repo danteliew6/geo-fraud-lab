@@ -1,0 +1,1307 @@
+{
+  "datasets": [
+    {
+      "name": "kpis",
+      "displayName": "kpis",
+      "queryLines": [
+        "SELECT MEASURE(total_disbursed) AS total_disbursed,\n",
+        "       MEASURE(active_borrowers) AS active_borrowers,\n",
+        "       MEASURE(npl_ratio) AS npl_ratio,\n",
+        "       MEASURE(par30) AS par30,\n",
+        "       CAST(MEASURE(approval_rate) AS DOUBLE) AS approval_rate,\n",
+        "       CAST(MEASURE(fraud_rate) AS DOUBLE) AS fraud_rate,\n",
+        "       MEASURE(fraud_amount) AS fraud_amount,\n",
+        "       MEASURE(num_flagged_applications) AS flagged_applications\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.metrics_lending"
+      ]
+    },
+    {
+      "name": "hotspots",
+      "displayName": "hotspots",
+      "queryLines": [
+        "SELECT latitude, longitude, province, applications, fraud_applications,\n",
+        "       CAST(fraud_rate AS DOUBLE) AS fraud_rate\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_hotspots\n",
+        "WHERE applications >= 3"
+      ]
+    },
+    {
+      "name": "fraud_province",
+      "displayName": "fraud_province",
+      "queryLines": [
+        "SELECT province,\n",
+        "       CAST(fraud_rate AS DOUBLE) AS fraud_rate,\n",
+        "       applications, fraud_applications, fraud_amount_idr\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_by_province\n",
+        "ORDER BY fraud_rate DESC"
+      ]
+    },
+    {
+      "name": "impossible_travel",
+      "displayName": "impossible_travel",
+      "queryLines": [
+        "SELECT application_id, customer_id,\n",
+        "       ROUND(distance_km,0) AS distance_km,\n",
+        "       ROUND(implied_speed_kmh,0) AS implied_speed_kmh,\n",
+        "       home_province, application_province, requested_amount_idr, ip_country\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_impossible_travel\n",
+        "ORDER BY implied_speed_kmh DESC"
+      ]
+    },
+    {
+      "name": "fraud_rings",
+      "displayName": "fraud_rings",
+      "queryLines": [
+        "SELECT device_id, num_applications, num_customers, fraud_applications,\n",
+        "       CAST(fraud_rate AS DOUBLE) AS fraud_rate,\n",
+        "       ROUND(total_requested_idr/1e9,2) AS total_requested_bn\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_rings\n",
+        "ORDER BY num_customers DESC"
+      ]
+    },
+    {
+      "name": "fraud_trend",
+      "displayName": "fraud_trend",
+      "queryLines": [
+        "SELECT application_month, applications, fraud_applications,\n",
+        "       CAST(fraud_rate AS DOUBLE) AS fraud_rate,\n",
+        "       ROUND(fraud_amount_idr/1e9,2) AS fraud_amount_bn\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_by_month\n",
+        "ORDER BY application_month"
+      ]
+    },
+    {
+      "name": "correlation",
+      "displayName": "correlation",
+      "queryLines": [
+        "SELECT Province AS province,\n",
+        "       CAST(MEASURE(fraud_rate) AS DOUBLE) AS fraud_rate,\n",
+        "       CAST(MEASURE(par30) AS DOUBLE) AS par30,\n",
+        "       CAST(MEASURE(npl_ratio) AS DOUBLE) AS npl_ratio,\n",
+        "       MEASURE(total_disbursed) AS total_disbursed\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.metrics_lending\n",
+        "GROUP BY Province\n",
+        "ORDER BY fraud_rate DESC"
+      ]
+    },
+    {
+      "name": "distance_bands",
+      "displayName": "distance_bands",
+      "queryLines": [
+        "SELECT band, applications, fraud_applications,\n",
+        "       ROUND(fraud_applications/applications,4) AS fraud_rate\n",
+        "FROM (\n",
+        "  SELECT CASE\n",
+        "           WHEN home_distance_km < 10 THEN '1 | 0-10 km'\n",
+        "           WHEN home_distance_km < 50 THEN '2 | 10-50 km'\n",
+        "           WHEN home_distance_km < 200 THEN '3 | 50-200 km'\n",
+        "           WHEN home_distance_km < 500 THEN '4 | 200-500 km'\n",
+        "           WHEN home_distance_km < 1000 THEN '5 | 500-1000 km'\n",
+        "           ELSE '6 | 1000+ km' END AS band,\n",
+        "         COUNT(*) AS applications,\n",
+        "         SUM(CASE WHEN is_fraud THEN 1 ELSE 0 END) AS fraud_applications\n",
+        "  FROM {{CATALOG}}.{{SCHEMA}}.vw_fraud_signals\n",
+        "  WHERE home_distance_km IS NOT NULL\n",
+        "  GROUP BY 1)\n",
+        "ORDER BY band"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "fraud_command_center",
+      "displayName": "Fraud Command Center",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# \ud83d\udef0\ufe0f Digital Lending \u2014 Geospatial Fraud Command Center"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "subtitle",
+            "multilineTextboxSpec": {
+              "lines": [
+                "**Databricks AI/BI** \u00b7 Real-time fraud signals across Indonesia \u2014 impossible-travel velocity, device rings, and location-mismatch geospatial intelligence. *Filter by province to drill the map, scatter, and tables.*"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_province",
+            "queries": [
+              {
+                "name": "q_hs",
+                "query": {
+                  "datasetName": "hotspots",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "q_fp",
+                "query": {
+                  "datasetName": "fraud_province",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "q_co",
+                "query": {
+                  "datasetName": "correlation",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "q_it",
+                "query": {
+                  "datasetName": "impossible_travel",
+                  "fields": [
+                    {
+                      "name": "application_province",
+                      "expression": "`application_province`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "province",
+                    "displayName": "Province",
+                    "queryName": "q_hs"
+                  },
+                  {
+                    "fieldName": "province",
+                    "displayName": "Province",
+                    "queryName": "q_fp"
+                  },
+                  {
+                    "fieldName": "province",
+                    "displayName": "Province",
+                    "queryName": "q_co"
+                  },
+                  {
+                    "fieldName": "application_province",
+                    "displayName": "Province",
+                    "queryName": "q_it"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "\ud83d\udd0d Province filter (drives map, scatter & tables)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_disbursed",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "total_disbursed",
+                      "expression": "`total_disbursed`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_disbursed",
+                  "displayName": "Total Disbursed (IDR)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "IDR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Disbursed (IDR)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_borrowers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "active_borrowers",
+                      "expression": "`active_borrowers`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "active_borrowers",
+                  "displayName": "Active Borrowers",
+                  "format": {
+                    "type": "number",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Active Borrowers"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_approval",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "approval_rate",
+                      "expression": "`approval_rate`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "approval_rate",
+                  "displayName": "Approval Rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Approval Rate"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 4,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_fraud_rate",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "fraud_rate",
+                  "displayName": "Fraud Rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fraud Rate"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 4,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_npl",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "npl_ratio",
+                      "expression": "`npl_ratio`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "npl_ratio",
+                  "displayName": "NPL Ratio",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "NPL Ratio"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_par30",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "par30",
+                      "expression": "`par30`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "par30",
+                  "displayName": "PAR30",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PAR30"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 7,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_fraud_amt",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "fraud_amount",
+                      "expression": "`fraud_amount`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "fraud_amount",
+                  "displayName": "Fraud Amount (IDR)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "IDR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fraud Amount (IDR)"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 7,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_flagged",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "fields": [
+                    {
+                      "name": "flagged_applications",
+                      "expression": "`flagged_applications`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "flagged_applications",
+                  "displayName": "Flagged Applications",
+                  "format": {
+                    "type": "number",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Flagged Applications"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 7,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "sec_map",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## \ud83d\uddfa\ufe0f Geospatial Fraud Hotspots \u2014 bubble size = application volume, color = fraud rate"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "map_hotspots",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "hotspots",
+                  "fields": [
+                    {
+                      "name": "latitude",
+                      "expression": "`latitude`"
+                    },
+                    {
+                      "name": "longitude",
+                      "expression": "`longitude`"
+                    },
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    },
+                    {
+                      "name": "applications",
+                      "expression": "`applications`"
+                    },
+                    {
+                      "name": "fraud_applications",
+                      "expression": "`fraud_applications`"
+                    },
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "symbol-map",
+              "encodings": {
+                "coordinates": {
+                  "latitude": {
+                    "fieldName": "latitude",
+                    "displayName": "latitude"
+                  },
+                  "longitude": {
+                    "fieldName": "longitude",
+                    "displayName": "longitude"
+                  }
+                },
+                "size": {
+                  "fieldName": "applications",
+                  "displayName": "Applications",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "fraud_rate",
+                  "displayName": "Fraud Rate",
+                  "scale": {
+                    "type": "quantitative",
+                    "colorRamp": {
+                      "mode": "scheme",
+                      "scheme": "reds"
+                    }
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "province",
+                    "displayName": "Province"
+                  },
+                  {
+                    "fieldName": "applications",
+                    "displayName": "Applications"
+                  },
+                  {
+                    "fieldName": "fraud_applications",
+                    "displayName": "Fraud Applications"
+                  },
+                  {
+                    "fieldName": "fraud_rate",
+                    "displayName": "Fraud Rate"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fraud Hotspots by H3 Cell Centroid (\u2265 3 applications)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 8,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_fraud_province",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fraud_province",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "fraud_rate",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Fraud Rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "province",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Province"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fraud Rate by Application Province"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 11,
+            "width": 4,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "sec_rings",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## \ud83c\udf10 Device Fraud Rings & Impossible-Travel Signals"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 19,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "scatter_travel",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "impossible_travel",
+                  "fields": [
+                    {
+                      "name": "distance_km",
+                      "expression": "`distance_km`"
+                    },
+                    {
+                      "name": "implied_speed_kmh",
+                      "expression": "`implied_speed_kmh`"
+                    },
+                    {
+                      "name": "requested_amount_idr",
+                      "expression": "`requested_amount_idr`"
+                    },
+                    {
+                      "name": "application_id",
+                      "expression": "`application_id`"
+                    },
+                    {
+                      "name": "home_province",
+                      "expression": "`home_province`"
+                    },
+                    {
+                      "name": "application_province",
+                      "expression": "`application_province`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "distance_km",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Distance from previous event (km)"
+                },
+                "y": {
+                  "fieldName": "implied_speed_kmh",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Implied speed (km/h)"
+                },
+                "size": {
+                  "fieldName": "requested_amount_idr",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Requested Amount"
+                },
+                "extra": [
+                  {
+                    "fieldName": "application_id",
+                    "displayName": "Application"
+                  },
+                  {
+                    "fieldName": "home_province",
+                    "displayName": "Home Province"
+                  },
+                  {
+                    "fieldName": "application_province",
+                    "displayName": "App Province"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Impossible Travel \u2014 implied velocity vs distance (flags 1,000\u20132,900 km/h)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_distance_bands",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "distance_bands",
+                  "fields": [
+                    {
+                      "name": "band",
+                      "expression": "`band`"
+                    },
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    },
+                    {
+                      "name": "applications",
+                      "expression": "`applications`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "band",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Home\u2013application distance band"
+                },
+                "y": {
+                  "fieldName": "fraud_rate",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Fraud Rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Location Mismatch \u2014 fraud rate by home-vs-application distance"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 20,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "table_rings",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fraud_rings",
+                  "fields": [
+                    {
+                      "name": "device_id",
+                      "expression": "`device_id`"
+                    },
+                    {
+                      "name": "num_customers",
+                      "expression": "`num_customers`"
+                    },
+                    {
+                      "name": "num_applications",
+                      "expression": "`num_applications`"
+                    },
+                    {
+                      "name": "fraud_applications",
+                      "expression": "`fraud_applications`"
+                    },
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    },
+                    {
+                      "name": "total_requested_bn",
+                      "expression": "`total_requested_bn`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "device_id",
+                    "displayName": "Device ID"
+                  },
+                  {
+                    "fieldName": "num_customers",
+                    "displayName": "Distinct Customers"
+                  },
+                  {
+                    "fieldName": "num_applications",
+                    "displayName": "Applications"
+                  },
+                  {
+                    "fieldName": "fraud_applications",
+                    "displayName": "Fraud Applications"
+                  },
+                  {
+                    "fieldName": "fraud_rate",
+                    "displayName": "Fraud Rate"
+                  },
+                  {
+                    "fieldName": "total_requested_bn",
+                    "displayName": "Total Requested (IDR bn)"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Device Fraud Rings \u2014 one device linked to 25\u201332 distinct customers"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 27,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "sec_trend",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## \ud83d\udcc8 Fraud Trend & Credit-Risk Correlation"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 33,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "line_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fraud_trend",
+                  "fields": [
+                    {
+                      "name": "application_month",
+                      "expression": "`application_month`"
+                    },
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "application_month",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "fraud_rate",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Fraud Rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Monthly Fraud Rate Trend (2023\u20132025)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 34,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "scatter_corr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "correlation",
+                  "fields": [
+                    {
+                      "name": "fraud_rate",
+                      "expression": "`fraud_rate`"
+                    },
+                    {
+                      "name": "par30",
+                      "expression": "`par30`"
+                    },
+                    {
+                      "name": "total_disbursed",
+                      "expression": "`total_disbursed`"
+                    },
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "npl_ratio",
+                      "expression": "`npl_ratio`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "fraud_rate",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Fraud Rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "par30",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "PAR30",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                },
+                "size": {
+                  "fieldName": "total_disbursed",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Disbursed"
+                },
+                "extra": [
+                  {
+                    "fieldName": "province",
+                    "displayName": "Province"
+                  },
+                  {
+                    "fieldName": "npl_ratio",
+                    "displayName": "NPL Ratio"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fraud Rate vs PAR30 by Home Province (bubble = disbursed)"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 34,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_fraud_amount",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fraud_province",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "fraud_amount_idr",
+                      "expression": "`fraud_amount_idr`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "province",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Province"
+                },
+                "y": {
+                  "fieldName": "fraud_amount_idr",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Fraud Amount (IDR)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "IDR",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fraud Amount by Application Province (IDR)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 41,
+            "width": 12,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}

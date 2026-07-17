@@ -14,6 +14,7 @@ A self-contained, parameterized Databricks lab: a digital-lending geospatial fra
 | **Geospatial analysis** | `vw_geo_analysis`, `vw_distance_bands` — distance-band fraud rates, province aggregates |
 | **Metric View** | `metrics_lending` — governed measures: disbursed, active borrowers, NPL ratio, PAR30, approval rate, fraud rate, fraud amount — all by province/month/credit band |
 | **8 Looker Studio views** | `vw_ls_portfolio`, `vw_ls_fraud_map`, `vw_ls_impossible_travel`, `vw_ls_fraud_rings`, `vw_ls_province_fraud`, `vw_ls_trend`, `vw_ls_geo_analysis`, `vw_ls_distance_bands` — lat/lon + `latlong` combined field ready for BI maps |
+| ✅ **AI/BI Fraud Dashboard** | **Geo Fraud Command Center** — auto-deployed by Run All; link printed at the end. Geospatial hotspot map, fraud KPIs, province breakdown, impossible-travel table, month-by-month trend. |
 
 Fraud is driven by **geospatial signals only**: impossible travel, location mismatch, device rings, foreign IP, and H3 hotspot concentration — realistic and probabilistic (not perfectly labelled).
 
@@ -124,6 +125,8 @@ Run [`sql/99_uninstall.sql`](sql/99_uninstall.sql) in the Databricks SQL editor 
 geo-fraud-lab/
 ├── README.md
 ├── .gitignore
+├── dashboards/
+│   └── geo_fraud_dashboard.json   # Parameterized AI/BI dashboard (auto-deployed by notebook)
 ├── notebooks/
 │   └── install_lab.py      # One-click Databricks notebook installer (import URL → Run All)
 ├── scripts/
