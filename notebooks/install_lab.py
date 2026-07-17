@@ -1,0 +1,208 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Geo Fraud Lab — One-Click Installer
+# MAGIC Run all cells top to bottom. That's it.
+# MAGIC
+# MAGIC **What this does:**
+# MAGIC 1. Downloads SQL files + the data generator from GitHub
+# MAGIC 2. Generates ~20k customers, ~30k loan applications, ~18k loans, ~200k repayments
+# MAGIC 3. Builds the full gold star schema with H3 geospatial index, fraud-signal views, and a governed Metric View
+# MAGIC 4. Prints a verification summary
+# MAGIC
+# MAGIC **Requirements:** Unity Catalog enabled · Photon or serverless SQL warehouse (required for H3/spatial SQL)
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 1: Configure (fill in the widgets, then Run All)
+dbutils.widgets.text("catalog",      "",              "1. Your catalog (must exist)")
+dbutils.widgets.text("schema",       "geo_fraud_lab", "2. Schema to create")
+dbutils.widgets.text("warehouse_id", "",              "3. SQL warehouse ID")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 2: Validate config
+catalog      = dbutils.widgets.get("catalog")
+schema       = dbutils.widgets.get("schema")
+warehouse_id = dbutils.widgets.get("warehouse_id")
+
+if not catalog:
+    raise ValueError("❌ Please set 'Your catalog' widget above and click Run All.")
+if not warehouse_id:
+    raise ValueError("❌ Please set 'SQL warehouse ID' widget above and click Run All.")
+
+print(f"✅ Target: {catalog}.{schema}  |  Warehouse: {warehouse_id}")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 3: Install pandas/numpy (if not available) and download files from GitHub
+import subprocess, sys
+
+# pandas + numpy are pre-installed on DBR clusters; this is a safety net for
+# minimal environments (e.g. single-node serverless notebooks).
+try:
+    import pandas, numpy
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pandas", "numpy"])
+
+import urllib.request, pathlib
+
+BASE = "https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main"
+TMP  = pathlib.Path("/tmp/geo_fraud_lab")
+TMP.mkdir(parents=True, exist_ok=True)
+
+SQL_FILES = [
+    "sql/01_tables_and_comments.sql",
+    "sql/02_dim_province.sql",
+    "sql/03_fraud_geo_views.sql",
+    "sql/04_metric_base.sql",
+    "sql/05_metric_view.sql",
+    "sql/06_geo_analysis_views.sql",
+    "sql/07_looker_views.sql",
+    "sql/08_verify_all.sql",
+]
+
+for f in SQL_FILES:
+    dest = TMP / pathlib.Path(f).name
+    urllib.request.urlretrieve(f"{BASE}/{f}", dest)
+    print(f"  ✅ Downloaded {f}")
+
+urllib.request.urlretrieve(f"{BASE}/scripts/generate_data.py", TMP / "generate_data.py")
+print("  ✅ Downloaded generate_data.py")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 4: Create schema
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+print(f"✅ Schema {catalog}.{schema} ready")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 5: Generate synthetic dataset and write tables
+sys.path.insert(0, str(TMP))
+import importlib
+
+# Fresh import in case the cell is re-run
+if "generate_data" in sys.modules:
+    importlib.reload(sys.modules["generate_data"])
+import generate_data
+
+print("📊 Generating synthetic lending + fraud dataset (fixed seed — same data for everyone)...")
+tables = generate_data.generate()
+generate_data.summarize(tables)
+
+print("\n📥 Writing tables to Unity Catalog...")
+for table_name, df in tables.items():
+    spark_df = spark.createDataFrame(df)
+    full_name = f"{catalog}.{schema}.{table_name}"
+    spark_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(full_name)
+    print(f"  ✅ {full_name}: {len(df):,} rows")
+
+print("✅ Base tables written")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 6: Build H3 index, views, and metric view via SQL
+import re
+
+# SQL files in execution order (08_verify_all is skipped here; run separately below)
+sql_run_files = [
+    "01_tables_and_comments.sql",
+    "02_dim_province.sql",
+    "03_fraud_geo_views.sql",
+    "04_metric_base.sql",
+    "05_metric_view.sql",
+    "06_geo_analysis_views.sql",
+    "07_looker_views.sql",
+]
+
+total = len(sql_run_files)
+for i, fname in enumerate(sql_run_files, 1):
+    sql_file = TMP / fname
+    sql_text = sql_file.read_text()
+    sql_text = sql_text.replace("{{CATALOG}}", catalog).replace("{{SCHEMA}}", schema)
+
+    # Split on semicolons, skip blank/comment-only chunks
+    statements = [s.strip() for s in sql_text.split(";") if re.sub(r"--[^\n]*", "", s).strip()]
+    ok = 0
+    for stmt in statements:
+        try:
+            spark.sql(stmt)
+            ok += 1
+        except Exception as e:
+            print(f"  ⚠️  {fname} stmt {ok+1}: {e}")
+            raise
+    print(f"  ✅ Step {i}/{total}: {fname} ({ok} statement{'s' if ok != 1 else ''})")
+
+print("✅ All SQL layers applied")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 7: Verify
+print("🔍 Verification\n")
+
+core_tables = [
+    "dim_customer",
+    "dim_province",
+    "dim_product",
+    "dim_date",
+    "fact_loan_application",
+    "fact_loan",
+    "fact_repayment",
+]
+for table in core_tables:
+    try:
+        n = spark.sql(f"SELECT COUNT(*) AS n FROM {catalog}.{schema}.{table}").collect()[0]["n"]
+        status = "✅" if n > 0 else "❌ EMPTY"
+        print(f"  {status}  {table}: {n:,} rows")
+    except Exception as e:
+        print(f"  ❌  {table}: {e}")
+
+views = [
+    "vw_fraud_signals",
+    "vw_fraud_hotspots",
+    "vw_geo_analysis",
+    "vw_distance_bands",
+    "vw_ls_portfolio",
+    "vw_ls_fraud_map",
+]
+print()
+for view in views:
+    try:
+        n = spark.sql(f"SELECT COUNT(*) AS n FROM {catalog}.{schema}.{view}").collect()[0]["n"]
+        status = "✅" if n > 0 else "❌ EMPTY"
+        print(f"  {status}  {view}: {n:,} rows")
+    except Exception as e:
+        print(f"  ❌  {view}: {e}")
+
+print()
+try:
+    row = spark.sql(f"SELECT fraud_rate, npl_ratio FROM {catalog}.{schema}.metrics_lending LIMIT 1").collect()
+    if row:
+        fraud_rate = row[0]["fraud_rate"]
+        npl_ratio  = row[0]["npl_ratio"]
+        print(f"  ✅  metrics_lending — fraud_rate: {fraud_rate:.1%}  |  npl_ratio: {npl_ratio:.1%}")
+    else:
+        print("  ⚠️   metrics_lending returned no rows")
+except Exception as e:
+    print(f"  ❌  metrics_lending: {e}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## ✅ Lab installed!
+# MAGIC
+# MAGIC **Your schema:** `{catalog}.{schema}` (substitute your actual values above)
+# MAGIC
+# MAGIC ### What was built
+# MAGIC | Layer | Objects |
+# MAGIC |---|---|
+# MAGIC | Gold star schema | `dim_customer`, `dim_province`, `dim_product`, `dim_date`, `fact_loan_application`, `fact_loan`, `fact_repayment` |
+# MAGIC | Fraud-signal views | `vw_fraud_signals` (impossible travel, location mismatch, device rings, foreign IP), `vw_fraud_hotspots` (H3 cell aggregation) |
+# MAGIC | Geospatial views | `vw_geo_analysis`, `vw_distance_bands` |
+# MAGIC | Metric View | `metrics_lending` — fraud rate, NPL ratio, PAR30, approval rate, disbursed IDR, active borrowers |
+# MAGIC | Looker Studio views | `vw_ls_portfolio`, `vw_ls_fraud_map`, `vw_ls_impossible_travel`, `vw_ls_fraud_rings`, `vw_ls_province_fraud`, `vw_ls_trend`, `vw_ls_geo_analysis`, `vw_ls_distance_bands` |
+# MAGIC
+# MAGIC ### Next steps
+# MAGIC - Connect **Looker Studio** (or any BI tool) to your workspace SQL warehouse and point it at the schema above.
+# MAGIC - See [`docs/looker_studio_integration.md`](https://github.com/danteliew6/geo-fraud-lab/blob/main/docs/looker_studio_integration.md) for step-by-step setup.
+# MAGIC - Explore fraud signals: `SELECT * FROM {catalog}.{schema}.vw_fraud_signals LIMIT 100`

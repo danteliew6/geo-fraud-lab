@@ -19,17 +19,35 @@ Fraud is driven by **geospatial signals only**: impossible travel, location mism
 
 ---
 
+## Quickstart — No CLI needed
+
+1. Open your Databricks workspace
+2. Go to **Workspace → Import**
+3. Paste this URL and click Import:
+   ```
+   https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/notebooks/install_lab.py
+   ```
+4. Open the imported notebook on a running cluster
+5. Fill in the three widgets: **catalog** (must exist), **schema** (default: `geo_fraud_lab`), **warehouse ID**
+6. Click **Run All**
+
+The notebook downloads the data files from GitHub, generates the dataset, builds all tables and views, and prints a verification summary.
+
+> **Finding your warehouse ID:** In your workspace, go to **Settings → SQL Warehouses** → click your warehouse → **Connection details** → copy the value after `/sql/1.0/warehouses/`.
+
+---
+
 ## Prerequisites
 
 - Databricks workspace with **Unity Catalog** enabled
 - An existing **catalog** you can create schemas in (the schema is created for you)
 - A **Photon-enabled or serverless SQL warehouse** — required for H3 (`h3_longlatash3string`) and spatial (`ST_DistanceSphere`) functions
-- Python 3.9+ and [uv](https://docs.astral.sh/uv/) (`brew install uv` or `pip install uv`)
-- [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) configured (`databricks configure --profile <name>`)
 
 ---
 
-## Quick start
+## Advanced: CLI install
+
+If you prefer running from a local terminal:
 
 ```bash
 git clone https://github.com/danteliew6/geo-fraud-lab
@@ -42,6 +60,8 @@ uv run --with 'databricks-connect==15.*,databricks-sdk,pandas,numpy,pyarrow' \
   --schema        geo_fraud_lab \
   --warehouse-id  YOUR_WAREHOUSE_ID
 ```
+
+Requires Python 3.9+, [uv](https://docs.astral.sh/uv/), and the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) configured (`databricks configure --profile <name>`).
 
 The installer will:
 1. Generate a seeded, deterministic synthetic dataset (same data every run)
@@ -103,6 +123,8 @@ Run [`sql/99_uninstall.sql`](sql/99_uninstall.sql) in the Databricks SQL editor 
 geo-fraud-lab/
 ├── README.md
 ├── .gitignore
+├── notebooks/
+│   └── install_lab.py      # One-click Databricks notebook installer (import URL → Run All)
 ├── scripts/
 │   ├── run_lab.py          # End-to-end installer (parameterized)
 │   └── generate_data.py    # Deterministic synthetic data generator (no Databricks dependency)
