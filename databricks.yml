@@ -1,0 +1,20 @@
+bundle:
+  name: geo-fraud-lab
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: "Unity Catalog catalog (must already exist)"
+    default: main
+  schema:
+    description: "Schema to create (auto-created)"
+    default: geo_fraud_lab
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

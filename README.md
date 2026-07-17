@@ -22,9 +22,35 @@ Fraud is driven by **geospatial signals only**: impossible travel, location mism
 
 ## Quickstart
 
-### Path A — Workshop Participants (Recommended)
+### Path A — DAB (Recommended for workshops)
 
-Use the notebook. No local setup required.
+One command deploys everything: data, views, metric view, and dashboard.
+
+**Requirements:** [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) installed and authenticated.
+
+```bash
+git clone https://github.com/danteliew6/geo-fraud-lab
+cd geo-fraud-lab
+databricks bundle deploy
+databricks bundle run install_geo_fraud_lab
+```
+
+Optional — override catalog or schema:
+```bash
+databricks bundle deploy -var="catalog=my_catalog" -var="schema=my_schema"
+databricks bundle run install_geo_fraud_lab -var="catalog=my_catalog" -var="schema=my_schema"
+```
+
+The job runs three tasks in sequence:
+1. **generate_data** — generates ~20k customers / ~30k applications / ~18k loans / ~200k repayments and writes base tables to Unity Catalog
+2. **run_sql** — executes all SQL layers (H3 index, views, metric view) via a SQL warehouse (required for `ST_*`, `H3`, and `WITH METRICS`)
+3. **deploy_dashboard** — deploys the AI/BI Geo Fraud Command Center and prints its URL
+
+---
+
+### Path B — Notebook (no CLI required)
+
+Use the one-click notebook. No local setup required.
 
 1. Open your Databricks workspace and go to **Workspace → Import**
 2. Paste this URL and click **Import**:
@@ -33,15 +59,13 @@ Use the notebook. No local setup required.
    ```
 3. Open the imported notebook, attach a **Serverless** or **DBR 17.3+** cluster, and click **Run All**
 
-That's it. The notebook generates the dataset, builds all tables, views, and metric view, deploys the AI/BI dashboard, and prints the dashboard URL at the end.
-
 > The notebook has two widgets: **catalog** (default: `main`) and **schema** (default: `geo_fraud_lab`). Change them if needed before running.
 
 ---
 
-### Path B — Developers / CI
+### Path C — CLI script
 
-Use the CLI script (`scripts/run_lab.py`). Requires a local machine with the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) configured and [`uv`](https://docs.astral.sh/uv/) installed.
+Use `scripts/run_lab.py`. Requires the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/danteliew6/geo-fraud-lab
@@ -55,7 +79,7 @@ uv run --with 'databricks-connect==15.*,databricks-sdk,pandas,numpy,pyarrow' \
   --warehouse-id  YOUR_WAREHOUSE_ID
 ```
 
-> **Note:** The CLI script does not deploy the AI/BI dashboard. Use the notebook (Path A) to get the dashboard.
+> **Note:** The CLI script does not deploy the AI/BI dashboard. Use Path A or Path B to get the dashboard.
 
 ---
 
@@ -117,13 +141,19 @@ Run [`sql/99_uninstall.sql`](sql/99_uninstall.sql) in the Databricks SQL editor 
 geo-fraud-lab/
 ├── README.md
 ├── .gitignore
+├── databricks.yml              # DAB root config (Path A)
+├── resources/
+│   └── install_job.yml         # DAB job definition (3-task install pipeline)
 ├── dashboards/
-│   └── geo_fraud_dashboard.json   # Parameterized AI/BI dashboard (auto-deployed by notebook)
+│   └── geo_fraud_dashboard.json   # Parameterized AI/BI dashboard (auto-deployed)
 ├── notebooks/
-│   └── install_lab.py      # One-click Databricks notebook installer (import URL → Run All)
+│   ├── install_lab.py          # One-click notebook installer (Path B — import URL → Run All)
+│   ├── 01_generate_data.py     # DAB task: generate + write base tables
+│   ├── 02_run_sql.py           # DAB task: execute SQL via Statement Execution API
+│   └── 03_deploy_dashboard.py  # DAB task: deploy AI/BI dashboard
 ├── scripts/
-│   ├── run_lab.py          # End-to-end installer (parameterized)
-│   └── generate_data.py    # Deterministic synthetic data generator (no Databricks dependency)
+│   ├── run_lab.py              # CLI installer (Path C)
+│   └── generate_data.py        # Deterministic synthetic data generator (no Databricks dependency)
 ├── sql/
 │   ├── 01_tables_and_comments.sql   # H3 index + table/column comments
 │   ├── 02_dim_province.sql          # Province dimension with lat/lon centroids

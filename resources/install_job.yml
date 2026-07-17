@@ -1,0 +1,44 @@
+resources:
+  jobs:
+    install_geo_fraud_lab:
+      name: "[geo-fraud-lab] Install"
+      tasks:
+        - task_key: generate_data
+          notebook_task:
+            notebook_path: ../notebooks/01_generate_data.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+            data_security_mode: SINGLE_USER
+
+        - task_key: run_sql
+          depends_on:
+            - task_key: generate_data
+          notebook_task:
+            notebook_path: ../notebooks/02_run_sql.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+            data_security_mode: SINGLE_USER
+
+        - task_key: deploy_dashboard
+          depends_on:
+            - task_key: run_sql
+          notebook_task:
+            notebook_path: ../notebooks/03_deploy_dashboard.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+            data_security_mode: SINGLE_USER
