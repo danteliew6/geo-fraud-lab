@@ -16,7 +16,7 @@ print(f"Target: {catalog}.{schema}")
 dashboard_url = None
 try:
     import urllib.request
-    from databricks.sdk import WorkspaceClient
+    import requests, json
 
     _DASH_URL = "https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/dashboards/geo_fraud_dashboard.json"
     with urllib.request.urlopen(_DASH_URL) as _r:
@@ -24,18 +24,25 @@ try:
 
     _spec = _spec.replace("{{CATALOG}}", catalog).replace("{{SCHEMA}}", schema)
 
-    _w = WorkspaceClient()
+    _host = spark.conf.get("spark.databricks.workspaceUrl")
+    _token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
+    _headers = {"Authorization": f"Bearer {_token}", "Content-Type": "application/json"}
 
     # Auto-detect warehouse (serverless preferred)
     _wh_id = None
     try:
-        _all_wh = list(_w.warehouses.list())
+        _wh_resp = requests.get(
+            f"https://{_host}/api/2.0/sql/warehouses",
+            headers=_headers,
+        )
+        _wh_resp.raise_for_status()
+        _all_wh = _wh_resp.json().get("warehouses", [])
         for _wh in _all_wh:
-            if getattr(_wh, "enable_serverless_compute", False):
-                _wh_id = _wh.id
+            if _wh.get("enable_serverless_compute"):
+                _wh_id = _wh["id"]
                 break
         if not _wh_id and _all_wh:
-            _wh_id = _all_wh[0].id
+            _wh_id = _all_wh[0]["id"]
     except Exception:
         pass
 
@@ -44,14 +51,24 @@ try:
     else:
         _spec = _spec.replace("{{WAREHOUSE_ID}}", "")
 
-    _dash = _w.lakeview.create(
-        serialized_dashboard=_spec,
-        display_name="Geo Fraud Command Center",
+    # Create dashboard
+    _resp = requests.post(
+        f"https://{_host}/api/2.0/lakeview/dashboards",
+        headers=_headers,
+        json={"serialized_dashboard": _spec, "display_name": "Geo Fraud Command Center"},
     )
-    _w.lakeview.publish(dashboard_id=_dash.dashboard_id)
+    _resp.raise_for_status()
+    _dash_id = _resp.json()["dashboard_id"]
 
-    _host = spark.conf.get("spark.databricks.workspaceUrl")
-    dashboard_url = f"https://{_host}/dashboardsv3/{_dash.dashboard_id}/published"
+    # Publish dashboard
+    _pub_resp = requests.post(
+        f"https://{_host}/api/2.0/lakeview/dashboards/{_dash_id}/published",
+        headers=_headers,
+        json={"embed_credentials": True, "warehouse_id": _wh_id or ""},
+    )
+    _pub_resp.raise_for_status()
+
+    dashboard_url = f"https://{_host}/dashboardsv3/{_dash_id}/published"
     print(f"Dashboard deployed: {dashboard_url}")
 
 except Exception as _e:
