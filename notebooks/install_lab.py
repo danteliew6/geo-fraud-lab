@@ -246,12 +246,14 @@ try:
         try:
             with urllib.request.urlopen(f"{BASE}/{_path}") as _r:
                 _spec = _r.read().decode()
-            # Qualify bare "FROM <table>" / "JOIN <table>" with catalog.schema.
-            _spec = re.sub(
-                r"(FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-                lambda m: f"{m.group(1)} {catalog}.{schema}.{m.group(2)}",
-                _spec,
-            )
+            # Dataset queries are hard-coded to the 'geo_fraud_lab' schema. Point them
+            # at the notebook's actual schema, then prepend the catalog so they become
+            # <catalog>.<schema>.<table> (dashboard.yml handles this for the DAB path).
+            if schema != "geo_fraud_lab":
+                _spec = re.sub(r"(FROM|JOIN)\s+geo_fraud_lab\.",
+                               lambda m: f"{m.group(1)} {schema}.", _spec)
+            _spec = re.sub(rf"(FROM|JOIN)\s+{re.escape(schema)}\.",
+                           lambda m: f"{m.group(1)} {catalog}.{schema}.", _spec)
             _dash = _w.lakeview.create(
                 serialized_dashboard=_spec,
                 display_name=_name,
