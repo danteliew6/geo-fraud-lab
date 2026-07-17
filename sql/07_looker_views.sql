@@ -116,6 +116,7 @@ SELECT
   num_applications,
   num_customers,
   fraud_applications,
+  fraud_rate,
   provinces_touched,
   bbox_span_km,
   latlong,

@@ -26,7 +26,6 @@ except ImportError:
 # COMMAND ----------
 
 # DBTITLE 1,Inline data generator (from scripts/generate_data.py)
-from __future__ import annotations
 import numpy as np
 import pandas as pd
 
@@ -249,8 +248,8 @@ def _generate():
         "app_lon":         app_lon,
         "device_id":       device_id,
         "ip_country":      ip_country.astype(str),
-        "h3_res7":         pd.Series([None] * N_APP, dtype="object"),
-        "h3_res9":         pd.Series([None] * N_APP, dtype="object"),
+        # h3_res7 / h3_res9 computed in sql/01 (an all-null column infers as
+        # NullType and can fail the Delta write on serverless).
         "is_fraud":        is_fraud,
         "fraud_reason":    fraud_reason,
     })

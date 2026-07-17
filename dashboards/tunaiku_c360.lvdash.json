@@ -4,42 +4,42 @@
       "name": "ds_kpi",
       "displayName": "Portfolio KPIs",
       "queryLines": [
-        "SELECT (SELECT SUM(principal_amount)/1e9 FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS total_disbursed_bn, (SELECT COUNT(DISTINCT customer_id) FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS active_borrowers, (SELECT 100*SUM(CASE WHEN dpd>90 THEN outstanding_principal ELSE 0 END)/NULLIF(SUM(outstanding_principal),0) FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS npl_pct, (SELECT 100*AVG(CASE WHEN decision='approved' THEN 1.0 ELSE 0.0 END) FROM {{CATALOG}}.{{SCHEMA}}.fact_loan_application) AS approval_pct, (SELECT SUM(outstanding_principal)/1e9 FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS outstanding_bn, (SELECT AVG(principal_amount)/1e6 FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS avg_loan_mn"
+        "SELECT (SELECT SUM(principal_amount)/1e9 FROM fact_loan) AS total_disbursed_bn, (SELECT COUNT(DISTINCT customer_id) FROM fact_loan) AS active_borrowers, (SELECT 100*SUM(CASE WHEN dpd>90 THEN outstanding_principal ELSE 0 END)/NULLIF(SUM(outstanding_principal),0) FROM fact_loan) AS npl_pct, (SELECT 100*AVG(CASE WHEN decision='approved' THEN 1.0 ELSE 0.0 END) FROM fact_loan_application) AS approval_pct, (SELECT SUM(outstanding_principal)/1e9 FROM fact_loan) AS outstanding_bn, (SELECT AVG(principal_amount)/1e6 FROM fact_loan) AS avg_loan_mn"
       ]
     },
     {
       "name": "ds_monthly",
       "displayName": "Monthly Disbursement",
       "queryLines": [
-        "SELECT DATE_TRUNC('MONTH', disbursement_date) AS mth, SUM(principal_amount)/1e9 AS disbursed_bn, COUNT(*) AS loans FROM {{CATALOG}}.{{SCHEMA}}.fact_loan GROUP BY 1 ORDER BY 1"
+        "SELECT DATE_TRUNC('MONTH', disbursement_date) AS mth, SUM(principal_amount)/1e9 AS disbursed_bn, COUNT(*) AS loans FROM fact_loan GROUP BY 1 ORDER BY 1"
       ]
     },
     {
       "name": "ds_province",
       "displayName": "Portfolio by Province",
       "queryLines": [
-        "SELECT c.province AS province, SUM(l.principal_amount)/1e9 AS disbursed_bn, SUM(l.outstanding_principal)/1e9 AS outstanding_bn FROM {{CATALOG}}.{{SCHEMA}}.fact_loan l JOIN {{CATALOG}}.{{SCHEMA}}.dim_customer c ON l.customer_id=c.customer_id GROUP BY c.province"
+        "SELECT c.province AS province, SUM(l.principal_amount)/1e9 AS disbursed_bn, SUM(l.outstanding_principal)/1e9 AS outstanding_bn FROM fact_loan l JOIN dim_customer c ON l.customer_id=c.customer_id GROUP BY c.province"
       ]
     },
     {
       "name": "ds_npl_product",
       "displayName": "NPL by Product",
       "queryLines": [
-        "SELECT CONCAT('Tunaiku ', p.tenor_months, 'mo') AS product, 100*SUM(CASE WHEN l.dpd>90 THEN l.outstanding_principal ELSE 0 END)/NULLIF(SUM(l.outstanding_principal),0) AS npl_pct FROM {{CATALOG}}.{{SCHEMA}}.fact_loan l JOIN {{CATALOG}}.{{SCHEMA}}.dim_product p ON l.product_id=p.product_id GROUP BY p.tenor_months, product"
+        "SELECT CONCAT('Tunaiku ', p.tenor_months, 'mo') AS product, 100*SUM(CASE WHEN l.dpd>90 THEN l.outstanding_principal ELSE 0 END)/NULLIF(SUM(l.outstanding_principal),0) AS npl_pct FROM fact_loan l JOIN dim_product p ON l.product_id=p.product_id GROUP BY p.tenor_months, product"
       ]
     },
     {
       "name": "ds_channel",
       "displayName": "Approval Rate by Channel",
       "queryLines": [
-        "SELECT c.acquisition_channel AS channel, 100*AVG(CASE WHEN a.decision='approved' THEN 1.0 ELSE 0.0 END) AS approval_pct FROM {{CATALOG}}.{{SCHEMA}}.fact_loan_application a JOIN {{CATALOG}}.{{SCHEMA}}.dim_customer c ON a.customer_id=c.customer_id GROUP BY c.acquisition_channel"
+        "SELECT c.acquisition_channel AS channel, 100*AVG(CASE WHEN a.decision='approved' THEN 1.0 ELSE 0.0 END) AS approval_pct FROM fact_loan_application a JOIN dim_customer c ON a.customer_id=c.customer_id GROUP BY c.acquisition_channel"
       ]
     },
     {
       "name": "ds_status",
       "displayName": "Loan Status Mix",
       "queryLines": [
-        "SELECT status, COUNT(*) AS loans FROM {{CATALOG}}.{{SCHEMA}}.fact_loan GROUP BY status"
+        "SELECT status, COUNT(*) AS loans FROM fact_loan GROUP BY status"
       ]
     }
   ],

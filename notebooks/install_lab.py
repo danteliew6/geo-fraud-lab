@@ -199,9 +199,9 @@ except Exception as e:
 # MAGIC |---|---|
 # MAGIC | Gold star schema | `dim_customer`, `dim_province`, `dim_product`, `dim_date`, `fact_loan_application`, `fact_loan`, `fact_repayment` |
 # MAGIC | Fraud-signal views | `vw_fraud_signals` (impossible travel, location mismatch, device rings, foreign IP), `vw_fraud_hotspots` (H3 cell aggregation) |
-# MAGIC | Geospatial views | `vw_geo_analysis`, `vw_distance_bands` |
+# MAGIC | Geospatial views | `vw_geo_hotspots_kring`, `vw_geo_province_choropleth`, `vw_geo_distance_bands`, `vw_geo_device_ring_clusters` |
 # MAGIC | Metric View | `metrics_lending` — fraud rate, NPL ratio, PAR30, approval rate, disbursed IDR, active borrowers |
-# MAGIC | Looker Studio views | `vw_ls_portfolio`, `vw_ls_fraud_map`, `vw_ls_impossible_travel`, `vw_ls_fraud_rings`, `vw_ls_province_fraud`, `vw_ls_trend`, `vw_ls_geo_analysis`, `vw_ls_distance_bands` |
+# MAGIC | Looker Studio views | `vw_ls_portfolio_overview`, `vw_ls_disbursement_by_month`, `vw_ls_portfolio_by_province`, `vw_ls_fraud_by_province`, `vw_ls_fraud_hotspots`, `vw_ls_hotspots_kring`, `vw_ls_distance_bands`, `vw_ls_fraud_rings`, `vw_ls_impossible_travel`, `vw_ls_fraud_by_month` |
 # MAGIC
 # MAGIC ### What was deployed
 # MAGIC | Item | Details |
@@ -216,20 +216,22 @@ except Exception as e:
 
 # COMMAND ----------
 
-# DBTITLE 1,Step 8: Deploy AI/BI Fraud Dashboard
-dashboard_url = None
+# DBTITLE 1,Step 8: Deploy AI/BI Dashboards
+# The dashboard JSON files use bare table names (catalog/schema are supplied by the
+# DAB at deploy time). For the notebook path we qualify them here so the datasets
+# resolve, then create + publish each dashboard via the Lakeview API.
+dashboard_urls = {}
 try:
     from databricks.sdk import WorkspaceClient
-    import urllib.request
+    import urllib.request, re
 
-    _DASH_TEMPLATE_URL = "https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/dashboards/geo_fraud_dashboard.json"
-    with urllib.request.urlopen(_DASH_TEMPLATE_URL) as _r:
-        _spec = _r.read().decode()
-
-    _spec = _spec.replace("{{CATALOG}}", catalog).replace("{{SCHEMA}}", schema)
+    _DASHBOARDS = [
+        ("dashboards/geo_fraud.lvdash.json",    "Geo Fraud Command Center"),
+        ("dashboards/tunaiku_c360.lvdash.json", "Tunaiku Lending 360"),
+    ]
 
     _w = WorkspaceClient()
-    # Auto-detect a warehouse (serverless preferred)
+    # Auto-detect a warehouse (serverless preferred) to back the dashboards.
     try:
         _wh_id = next(
             (wh.id for wh in _w.warehouses.list() if getattr(wh, 'enable_serverless_compute', False)),
@@ -237,24 +239,36 @@ try:
         )
     except Exception:
         _wh_id = None
-    if _wh_id:
-        _spec = _spec.replace('{{WAREHOUSE_ID}}', _wh_id)
-    else:
-        _spec = _spec.replace('{{WAREHOUSE_ID}}', '')
-    _dash = _w.lakeview.create(
-        serialized_dashboard=_spec,
-        display_name="Geo Fraud Command Center",
-    )
-    _w.lakeview.publish(dashboard_id=_dash.dashboard_id)
+
     _workspace_host = spark.conf.get("spark.databricks.workspaceUrl")
-    dashboard_url = f"https://{_workspace_host}/dashboardsv3/{_dash.dashboard_id}/published"
-    print(f"✅ Dashboard deployed: {dashboard_url}")
+
+    for _path, _name in _DASHBOARDS:
+        try:
+            with urllib.request.urlopen(f"{BASE}/{_path}") as _r:
+                _spec = _r.read().decode()
+            # Qualify bare "FROM <table>" / "JOIN <table>" with catalog.schema.
+            _spec = re.sub(
+                r"(FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                lambda m: f"{m.group(1)} {catalog}.{schema}.{m.group(2)}",
+                _spec,
+            )
+            _dash = _w.lakeview.create(
+                serialized_dashboard=_spec,
+                display_name=_name,
+                warehouse_id=_wh_id,
+            )
+            _w.lakeview.publish(dashboard_id=_dash.dashboard_id, warehouse_id=_wh_id)
+            _url = f"https://{_workspace_host}/dashboardsv3/{_dash.dashboard_id}/published"
+            dashboard_urls[_name] = _url
+            print(f"✅ Dashboard deployed: {_name} → {_url}")
+        except Exception as _e:
+            print(f"⚠️ Dashboard '{_name}' deploy failed: {_e}")
 except Exception as _e:
-    print(f"⚠️ Dashboard deploy failed: {_e}")
-    print("   (Tables and views are installed — deploy the dashboard manually via the Databricks UI)")
+    print(f"⚠️ Dashboard deploy step failed: {_e}")
+    print("   (Tables and views are installed — deploy the dashboards manually via the Databricks UI)")
 
 # COMMAND ----------
 
 print(f"✅ Schema: {catalog}.{schema}")
-if dashboard_url:
-    print(f"  AI/BI Dashboard: {dashboard_url}")
+for _name, _url in dashboard_urls.items():
+    print(f"  AI/BI Dashboard — {_name}: {_url}")

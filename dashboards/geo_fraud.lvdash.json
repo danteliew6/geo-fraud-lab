@@ -12,7 +12,7 @@
         "       CAST(MEASURE(fraud_rate) AS DOUBLE) AS fraud_rate,\n",
         "       MEASURE(fraud_amount) AS fraud_amount,\n",
         "       MEASURE(num_flagged_applications) AS flagged_applications\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.metrics_lending"
+        "FROM metrics_lending"
       ]
     },
     {
@@ -21,7 +21,7 @@
       "queryLines": [
         "SELECT latitude, longitude, province, applications, fraud_applications,\n",
         "       CAST(fraud_rate AS DOUBLE) AS fraud_rate\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_hotspots\n",
+        "FROM vw_ls_fraud_hotspots\n",
         "WHERE applications >= 3"
       ]
     },
@@ -32,7 +32,7 @@
         "SELECT province,\n",
         "       CAST(fraud_rate AS DOUBLE) AS fraud_rate,\n",
         "       applications, fraud_applications, fraud_amount_idr\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_by_province\n",
+        "FROM vw_ls_fraud_by_province\n",
         "ORDER BY fraud_rate DESC"
       ]
     },
@@ -44,7 +44,7 @@
         "       ROUND(distance_km,0) AS distance_km,\n",
         "       ROUND(implied_speed_kmh,0) AS implied_speed_kmh,\n",
         "       home_province, application_province, requested_amount_idr, ip_country\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_impossible_travel\n",
+        "FROM vw_ls_impossible_travel\n",
         "ORDER BY implied_speed_kmh DESC"
       ]
     },
@@ -55,7 +55,7 @@
         "SELECT device_id, num_applications, num_customers, fraud_applications,\n",
         "       CAST(fraud_rate AS DOUBLE) AS fraud_rate,\n",
         "       ROUND(total_requested_idr/1e9,2) AS total_requested_bn\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_rings\n",
+        "FROM vw_ls_fraud_rings\n",
         "ORDER BY num_customers DESC"
       ]
     },
@@ -66,7 +66,7 @@
         "SELECT application_month, applications, fraud_applications,\n",
         "       CAST(fraud_rate AS DOUBLE) AS fraud_rate,\n",
         "       ROUND(fraud_amount_idr/1e9,2) AS fraud_amount_bn\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.vw_ls_fraud_by_month\n",
+        "FROM vw_ls_fraud_by_month\n",
         "ORDER BY application_month"
       ]
     },
@@ -79,7 +79,7 @@
         "       CAST(MEASURE(par30) AS DOUBLE) AS par30,\n",
         "       CAST(MEASURE(npl_ratio) AS DOUBLE) AS npl_ratio,\n",
         "       MEASURE(total_disbursed) AS total_disbursed\n",
-        "FROM {{CATALOG}}.{{SCHEMA}}.metrics_lending\n",
+        "FROM metrics_lending\n",
         "GROUP BY Province\n",
         "ORDER BY fraud_rate DESC"
       ]
@@ -100,7 +100,7 @@
         "           ELSE '6 | 1000+ km' END AS band,\n",
         "         COUNT(*) AS applications,\n",
         "         SUM(CASE WHEN is_fraud THEN 1 ELSE 0 END) AS fraud_applications\n",
-        "  FROM {{CATALOG}}.{{SCHEMA}}.vw_fraud_signals\n",
+        "  FROM vw_fraud_signals\n",
         "  WHERE home_distance_km IS NOT NULL\n",
         "  GROUP BY 1)\n",
         "ORDER BY band"

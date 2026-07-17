@@ -5,8 +5,8 @@ digital-lending / consumer-loan **geospatial fraud** analytics lab.
 
 Pure pandas/NumPy: builds a GOLD star schema (dimensions + facts) with
 geospatial columns and geo-driven fraud signals. NO Databricks dependency
-here — `run_lab.py` imports `generate()` and writes the DataFrames to Unity
-Catalog. A fixed seed makes the dataset identical for everyone.
+here — the install notebooks import `generate()` and write the DataFrames to
+Unity Catalog. A fixed seed makes the dataset identical for everyone.
 
 Scenario (customer-agnostic): a digital consumer-lending platform issuing
 short-tenor unsecured personal cash loans across Indonesia. Fraud is driven by
@@ -279,8 +279,9 @@ def generate() -> dict[str, pd.DataFrame]:
         "app_lon": app_lon,
         "device_id": device_id,
         "ip_country": ip_country.astype(str),
-        "h3_res7": pd.Series([None] * N_APP, dtype="object"),  # computed in SQL
-        "h3_res9": pd.Series([None] * N_APP, dtype="object"),  # computed in SQL
+        # h3_res7 / h3_res9 are intentionally NOT written here — an all-null column
+        # infers as Spark NullType and can fail the Delta write on serverless.
+        # sql/01_tables_and_comments.sql computes them via h3_longlatash3string(...).
         "is_fraud": is_fraud,
         "fraud_reason": fraud_reason,
     })

@@ -136,6 +136,7 @@ SELECT
   num_applications,
   num_customers,
   fraud_applications,
+  ROUND(fraud_applications / NULLIF(num_applications, 0), 4) AS fraud_rate,
   provinces_touched,
   latitude,
   longitude,

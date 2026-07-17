@@ -6,14 +6,18 @@ include:
 
 variables:
   catalog:
-    description: "Unity Catalog catalog (must already exist)"
-    default: main
+    description: "Unity Catalog catalog (must already exist). Free Edition: use 'workspace'."
+    default: workspace
   schema:
-    description: "Schema to create (auto-created)"
+    description: "Schema to create (auto-created)."
     default: geo_fraud_lab
   warehouse_id:
-    description: "SQL warehouse ID for the dashboard (find in SQL Warehouses > Connection details)"
-    default: ""
+    description: >-
+      SQL warehouse that backs the dashboards. Defaults to the Free Edition
+      'Serverless Starter Warehouse'. Override on other workspaces with
+      --var="warehouse_id=<id>".
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
 
 targets:
   dev:

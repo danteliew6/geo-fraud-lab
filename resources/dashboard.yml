@@ -2,12 +2,16 @@ resources:
   dashboards:
     geo_fraud_dashboard:
       display_name: "Geo Fraud Command Center"
-      file_path: ../dashboards/rendered/geo_fraud_dashboard.json
-      embed_credentials: true
+      file_path: ../dashboards/geo_fraud.lvdash.json
       warehouse_id: ${var.warehouse_id}
+      # Native token-free parameterization (Databricks CLI 0.281.0+): the dashboard
+      # JSON uses bare table names; catalog/schema are injected at deploy time.
+      dataset_catalog: ${var.catalog}
+      dataset_schema: ${var.schema}
 
     tunaiku_c360_dashboard:
       display_name: "Tunaiku Lending 360"
-      file_path: ../dashboards/rendered/tunaiku_c360_dashboard.json
-      embed_credentials: true
+      file_path: ../dashboards/tunaiku_c360.lvdash.json
       warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog}
+      dataset_schema: ${var.schema}
