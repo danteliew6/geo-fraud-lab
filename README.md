@@ -20,36 +20,28 @@ Fraud is driven by **geospatial signals only**: impossible travel, location mism
 
 ---
 
-## Quickstart — No CLI needed
+## Quickstart
 
-1. Open your Databricks workspace
-2. Go to **Workspace → Import**
-3. Paste this URL and click Import:
+### Path A — Workshop Participants (Recommended)
+
+Use the notebook. No local setup required.
+
+1. Open your Databricks workspace and go to **Workspace → Import**
+2. Paste this URL and click **Import**:
    ```
    https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/notebooks/install_lab.py
    ```
-4. Open the imported notebook
-4a. Attach a **Serverless** or **DBR 17.3+** cluster
-5. Fill in the widgets: **catalog** (must exist), **schema** (default: `geo_fraud_lab`), and optionally **warehouse HTTP path** (for Looker Studio — not needed for installation)
-6. Click **Run All**
+3. Open the imported notebook, attach a **Serverless** or **DBR 17.3+** cluster, and click **Run All**
 
-The notebook downloads the data files from GitHub, generates the dataset, builds all tables and views, and prints a verification summary.
+That's it. The notebook generates the dataset, builds all tables, views, and metric view, deploys the AI/BI dashboard, and prints the dashboard URL at the end.
 
-> **Finding your warehouse HTTP path:** In your workspace, go to **Settings → SQL Warehouses** → click your warehouse → **Connection details** → copy the **HTTP path** value (e.g. `/sql/1.0/warehouses/abc123`). You will need this to connect Looker Studio after installation.
+> The notebook has two widgets: **catalog** (default: `main`) and **schema** (default: `geo_fraud_lab`). Change them if needed before running.
 
 ---
 
-## Prerequisites
+### Path B — Developers / CI
 
-- Databricks workspace with **Unity Catalog** enabled
-- An existing **catalog** you can create schemas in (the schema is created for you)
-- A **Serverless cluster** or **DBR 17.3+ LTS cluster** — required for ST_ geospatial functions and Metric Views
-
----
-
-## Advanced: CLI install
-
-If you prefer running from a local terminal:
+Use the CLI script (`scripts/run_lab.py`). Requires a local machine with the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) configured and [`uv`](https://docs.astral.sh/uv/) installed.
 
 ```bash
 git clone https://github.com/danteliew6/geo-fraud-lab
@@ -63,15 +55,15 @@ uv run --with 'databricks-connect==15.*,databricks-sdk,pandas,numpy,pyarrow' \
   --warehouse-id  YOUR_WAREHOUSE_ID
 ```
 
-Requires Python 3.9+, [uv](https://docs.astral.sh/uv/), and the [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) configured (`databricks configure --profile <name>`).
+> **Note:** The CLI script does not deploy the AI/BI dashboard. Use the notebook (Path A) to get the dashboard.
 
-The installer will:
-1. Generate a seeded, deterministic synthetic dataset (same data every run)
-2. Write the gold star-schema tables to `<catalog>.<schema>` via Databricks Connect
-3. Execute the SQL layers in order (tables → geo/fraud views → metric view → Looker Studio views)
-4. Verify every object and print a row-count + metric report
+---
 
-Total run time: ~3–5 minutes on a serverless warehouse.
+## Prerequisites
+
+- Databricks workspace with **Unity Catalog** enabled
+- An existing **catalog** you can create schemas in (the schema is created for you)
+- A **Serverless cluster** or **DBR 17.3+ LTS cluster** — required for ST_ geospatial functions and Metric Views
 
 ---
 

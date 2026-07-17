@@ -19,26 +19,17 @@
 # DBTITLE 1,Step 1: Configure (fill in the widgets, then Run All)
 dbutils.widgets.text("catalog",             "main",          "1. Your catalog (must exist)")
 dbutils.widgets.text("schema",              "geo_fraud_lab", "2. Schema to create")
-# warehouse_http_path is informational only — it is NOT used during installation.
-# You will need it to connect Looker Studio after installation.
-# Find it in: Settings → SQL Warehouses → <your warehouse> → Connection details → HTTP Path
-dbutils.widgets.text("warehouse_http_path", "",              "3. SQL warehouse HTTP path (optional — for Looker Studio)")
 
 # COMMAND ----------
 
 # DBTITLE 1,Step 2: Validate config
 catalog            = dbutils.widgets.get("catalog")
 schema             = dbutils.widgets.get("schema")
-warehouse_http_path = dbutils.widgets.get("warehouse_http_path")
 
 if not catalog:
     raise ValueError("❌ Please set 'Your catalog' widget above and click Run All.")
 
 print(f"✅ Target: {catalog}.{schema}")
-if warehouse_http_path:
-    print(f"   Looker Studio HTTP Path: {warehouse_http_path}")
-else:
-    print("   (warehouse_http_path not set — fill it in later for Looker Studio connection)")
 
 # COMMAND ----------
 
@@ -237,26 +228,19 @@ try:
 
     _spec = _spec.replace("{{CATALOG}}", catalog).replace("{{SCHEMA}}", schema)
 
-    _wh_id = ""
-    if warehouse_http_path:
-        _wh_id = warehouse_http_path.strip("/").split("/")[-1]
-    else:
-        try:
-            _w = WorkspaceClient()
-            _wh = next(
-                (wh for wh in _w.warehouses.list() if wh.enable_serverless_compute),
-                None,
-            )
-            if _wh is None:
-                _wh = next(iter(_w.warehouses.list()), None)
-            if _wh:
-                _wh_id = _wh.id
-        except Exception:
-            pass
-
-    _spec = _spec.replace("{{WAREHOUSE_ID}}", _wh_id)
-
     _w = WorkspaceClient()
+    # Auto-detect a warehouse (serverless preferred)
+    try:
+        _wh_id = next(
+            (wh.id for wh in _w.warehouses.list() if getattr(wh, 'enable_serverless_compute', False)),
+            next((wh.id for wh in _w.warehouses.list()), None)
+        )
+    except Exception:
+        _wh_id = None
+    if _wh_id:
+        _spec = _spec.replace('{{WAREHOUSE_ID}}', _wh_id)
+    else:
+        _spec = _spec.replace('{{WAREHOUSE_ID}}', '')
     _dash = _w.lakeview.create(
         serialized_dashboard=_spec,
         display_name="Geo Fraud Command Center",
@@ -271,12 +255,6 @@ except Exception as _e:
 
 # COMMAND ----------
 
-# Connection info for Looker Studio
-http_path = dbutils.widgets.get("warehouse_http_path")
 print(f"✅ Schema: {catalog}.{schema}")
-if http_path:
-    print(f"  Looker Studio HTTP Path: {http_path}")
-else:
-    print("  Looker Studio HTTP Path: (not set — find it in Settings → SQL Warehouses → Connection details)")
 if dashboard_url:
     print(f"  AI/BI Dashboard: {dashboard_url}")
