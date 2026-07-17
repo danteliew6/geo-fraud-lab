@@ -65,6 +65,7 @@ def split_statements(text):
 # COMMAND ----------
 
 # DBTITLE 1,Fetch SQL files from GitHub and execute via Statement Execution API
+import time
 import urllib.request
 from databricks.sdk.service.sql import StatementState
 
@@ -91,9 +92,14 @@ def execute_sql(stmt, wh_id, cat, sch):
         statement=stmt,
         catalog=cat,
         schema=sch,
-        wait_timeout="120s",
+        wait_timeout="0s",
     )
-    if result.status.state not in (StatementState.SUCCEEDED,):
+    # Poll until terminal state
+    terminal = {StatementState.SUCCEEDED, StatementState.FAILED, StatementState.CANCELED, StatementState.CLOSED}
+    while result.status.state not in terminal:
+        time.sleep(5)
+        result = w.statement_execution.get_statement(result.statement_id)
+    if result.status.state != StatementState.SUCCEEDED:
         err = result.status.error
         raise RuntimeError(f"Statement failed ({result.status.state}): {err}")
     return result

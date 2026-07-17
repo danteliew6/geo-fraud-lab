@@ -7,7 +7,7 @@ include:
 variables:
   catalog:
     description: "Unity Catalog catalog (must already exist)"
-    default: main
+    default: dante_classic_stable_catalog
   schema:
     description: "Schema to create (auto-created)"
     default: geo_fraud_lab
