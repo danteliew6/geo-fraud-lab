@@ -9,11 +9,7 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-            data_security_mode: SINGLE_USER
+          environment_key: serverless
 
         - task_key: run_sql
           depends_on:
@@ -23,11 +19,7 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-            data_security_mode: SINGLE_USER
+          environment_key: serverless
 
         - task_key: deploy_dashboard
           depends_on:
@@ -37,8 +29,9 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-            data_security_mode: SINGLE_USER
+          environment_key: serverless
+
+      environments:
+        - environment_key: serverless
+          spec:
+            client: "1"
