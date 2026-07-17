@@ -49,14 +49,16 @@ Each `vw_ls_*` view is purpose-built for a specific Looker Studio chart type:
 
 | View | Recommended chart | Key fields |
 |---|---|---|
-| `vw_ls_portfolio` | Scorecard / KPI tiles | `total_disbursed`, `active_borrowers`, `npl_ratio`, `par30_ratio`, `approval_rate`, `fraud_rate`, `fraud_amount` |
-| `vw_ls_fraud_map` | Bubble map (lat/lon) | `latitude`, `longitude`, `latlong`, `app_count`, `fraud_rate`, `province_name` |
-| `vw_ls_impossible_travel` | Scatter chart | `implied_speed_kmh`, `distance_km`, `time_gap_hours`, `is_impossible_travel` |
-| `vw_ls_fraud_rings` | Table | `device_id`, `customer_count`, `fraud_count`, `fraud_rate` |
-| `vw_ls_province_fraud` | Bar chart | `province_name`, `fraud_rate`, `total_disbursed`, `npl_ratio` |
-| `vw_ls_trend` | Time series / line chart | `application_month`, `total_apps`, `fraud_count`, `fraud_rate` |
-| `vw_ls_geo_analysis` | Table or bar | `h3_cell`, `h3_lat`, `h3_lon`, `app_count`, `fraud_count`, `fraud_rate` |
-| `vw_ls_distance_bands` | Bar chart | `distance_band`, `total_apps`, `fraud_count`, `fraud_rate` |
+| `vw_ls_portfolio_overview` | Scorecard / KPI tiles | `total_disbursed_idr`, `active_borrowers`, `npl_ratio`, `par30`, `approval_rate`, `fraud_rate`, `fraud_amount_idr` |
+| `vw_ls_disbursement_by_month` | Time series / line chart | `disbursement_month`, `total_disbursed_idr`, `loans_funded`, `avg_loan_size_idr` |
+| `vw_ls_portfolio_by_province` | Bubble map (lat/lon) | `province`, `latitude`, `longitude`, `latlong`, `total_disbursed_idr`, `npl_ratio` |
+| `vw_ls_fraud_by_province` | Bar chart / map | `province`, `latitude`, `longitude`, `latlong`, `fraud_rate`, `fraud_amount_idr`, `applications` |
+| `vw_ls_fraud_hotspots` | Bubble map (lat/lon) | `h3_cell`, `province`, `latitude`, `longitude`, `latlong`, `applications`, `fraud_rate` |
+| `vw_ls_hotspots_kring` | Weighted bubble map | `h3_cell`, `latitude`, `longitude`, `latlong`, `applications`, `fraud_rate` |
+| `vw_ls_distance_bands` | Bar chart | `distance_band`, `applications`, `fraud_applications`, `fraud_rate`, `avg_distance_km` |
+| `vw_ls_fraud_rings` | Table | `device_id`, `num_customers`, `num_applications`, `fraud_applications`, `fraud_rate`, `bbox_span_km` |
+| `vw_ls_impossible_travel` | Scatter chart | `implied_speed_kmh`, `distance_km`, `hours_between`, `home_province`, `application_province` |
+| `vw_ls_fraud_by_month` | Time series / line chart | `application_month`, `applications`, `fraud_applications`, `fraud_rate`, `fraud_amount_idr` |
 
 ---
 
@@ -75,8 +77,8 @@ The `latlong` field contains a `"lat,lon"` string (e.g. `"-6.2146,106.8451"`). S
 Looker Studio's native chart types do **not** support H3 hexagon polygons. To render H3 hotspot density as a hex map:
 
 1. Use a **Community Visualization** — e.g. a [deck.gl H3HexagonLayer](https://deck.gl/docs/api-reference/geo-layers/h3-hexagon-layer) hosted as a Looker Studio community viz.
-2. Reference the `h3_cell` field from `vw_ls_geo_analysis` (resolution 7 cells) as the hex identifier.
-3. Use `fraud_rate` or `app_count` as the weight/color field.
+2. Reference the `h3_cell` field from `vw_ls_fraud_hotspots` (resolution 7 cells) as the hex identifier.
+3. Use `fraud_rate` or `applications` as the weight/color field.
 
 See the [Looker Studio Community Visualizations docs](https://developers.google.com/looker-studio/visualization) for how to build and deploy a custom viz.
 

@@ -105,7 +105,7 @@ The centroid is used in Looker Studio bubble maps (since Looker Studio can't ren
 
 ---
 
-## `vw_distance_bands` — distance-band analysis
+## `vw_geo_distance_bands` — distance-band analysis
 
 Groups applications into three bands based on distance from home:
 

@@ -19,6 +19,10 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
+              # Root of the bundle files synced into the workspace. The notebook
+              # reads the SQL layers from ${sql_path}/sql — fully self-contained,
+              # no GitHub fetch and no SQL-warehouse dependency.
+              sql_path: ${workspace.file_path}
           environment_key: serverless
 
       environments:
