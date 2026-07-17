@@ -31,20 +31,26 @@ One command deploys everything: data, views, metric view, and dashboard.
 ```bash
 git clone https://github.com/danteliew6/geo-fraud-lab
 cd geo-fraud-lab
-databricks bundle deploy
-databricks bundle run install_geo_fraud_lab
+
+# Step 1 — render dashboard JSON templates with your catalog/schema
+python3 scripts/prepare.py --catalog my_catalog --schema geo_fraud_lab --warehouse-id YOUR_WAREHOUSE_ID
+
+# Step 2 — deploy dashboards + job to your workspace
+databricks bundle deploy --var="catalog=my_catalog" --var="schema=geo_fraud_lab" --var="warehouse_id=YOUR_WAREHOUSE_ID"
+
+# Step 3 — run the data install job (generates data + builds all SQL views)
+databricks bundle run install_geo_fraud_lab --var="catalog=my_catalog" --var="schema=geo_fraud_lab"
 ```
 
-Optional — override catalog or schema:
-```bash
-databricks bundle deploy -var="catalog=my_catalog" -var="schema=my_schema"
-databricks bundle run install_geo_fraud_lab -var="catalog=my_catalog" -var="schema=my_schema"
-```
+> **Why `prepare.py`?** DAB does not substitute variables inside dashboard JSON files. `prepare.py` renders the template files in `dashboards/` into `dashboards/rendered/` with your real catalog and schema — DAB then deploys the rendered versions. The `rendered/` folder is gitignored and never committed.
 
-The job runs three tasks in sequence:
+The job runs two tasks in sequence:
 1. **generate_data** — generates ~20k customers / ~30k applications / ~18k loans / ~200k repayments and writes base tables to Unity Catalog
 2. **run_sql** — executes all SQL layers (H3 index, views, metric view) via a SQL warehouse (required for `ST_*`, `H3`, and `WITH METRICS`)
-3. **deploy_dashboard** — deploys the AI/BI Geo Fraud Command Center and prints its URL
+
+`bundle deploy` also deploys two AI/BI dashboards automatically:
+- **Geo Fraud Command Center** — 8-tile geospatial fraud analysis (hotspot map, impossible-travel, device rings)
+- **Tunaiku Lending 360** — portfolio overview (disbursed, NPL, PAR30, approval rate by province)
 
 ---
 

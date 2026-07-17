@@ -2,12 +2,12 @@ resources:
   dashboards:
     geo_fraud_dashboard:
       display_name: "Geo Fraud Command Center"
-      file_path: ../dashboards/geo_fraud_dashboard.json
+      file_path: ../dashboards/rendered/geo_fraud_dashboard.json
       embed_credentials: true
       warehouse_id: ${var.warehouse_id}
 
     tunaiku_c360_dashboard:
       display_name: "Tunaiku Lending 360"
-      file_path: ../dashboards/tunaiku_c360_dashboard.json
+      file_path: ../dashboards/rendered/tunaiku_c360_dashboard.json
       embed_credentials: true
       warehouse_id: ${var.warehouse_id}
