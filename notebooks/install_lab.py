@@ -242,6 +242,16 @@ try:
 
     _workspace_host = spark.conf.get("spark.databricks.workspaceUrl")
 
+    # Idempotency: map existing ACTIVE dashboards by display name so re-running
+    # the notebook UPDATES in place instead of spawning duplicate dashboards.
+    _existing = {}
+    try:
+        for _d in _w.lakeview.list():
+            if getattr(_d, "lifecycle_state", "ACTIVE") == "ACTIVE" and _d.display_name:
+                _existing.setdefault(_d.display_name, _d.dashboard_id)
+    except Exception:
+        pass
+
     for _path, _name in _DASHBOARDS:
         try:
             with urllib.request.urlopen(f"{BASE}/{_path}") as _r:
@@ -254,15 +264,27 @@ try:
                                lambda m: f"{m.group(1)} {schema}.", _spec)
             _spec = re.sub(rf"(FROM|JOIN)\s+{re.escape(schema)}\.",
                            lambda m: f"{m.group(1)} {catalog}.{schema}.", _spec)
-            _dash = _w.lakeview.create(
-                serialized_dashboard=_spec,
-                display_name=_name,
-                warehouse_id=_wh_id,
-            )
+
+            _existing_id = _existing.get(_name)
+            if _existing_id:
+                _dash = _w.lakeview.update(
+                    dashboard_id=_existing_id,
+                    serialized_dashboard=_spec,
+                    display_name=_name,
+                    warehouse_id=_wh_id,
+                )
+                _verb = "updated"
+            else:
+                _dash = _w.lakeview.create(
+                    serialized_dashboard=_spec,
+                    display_name=_name,
+                    warehouse_id=_wh_id,
+                )
+                _verb = "created"
             _w.lakeview.publish(dashboard_id=_dash.dashboard_id, warehouse_id=_wh_id)
             _url = f"https://{_workspace_host}/dashboardsv3/{_dash.dashboard_id}/published"
             dashboard_urls[_name] = _url
-            print(f"✅ Dashboard deployed: {_name} → {_url}")
+            print(f"✅ Dashboard {_verb}: {_name} → {_url}")
         except Exception as _e:
             print(f"⚠️ Dashboard '{_name}' deploy failed: {_e}")
 except Exception as _e:
