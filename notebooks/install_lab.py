@@ -17,7 +17,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Step 1: Configure (fill in the widgets, then Run All)
-dbutils.widgets.text("catalog",             "",              "1. Your catalog (must exist)")
+dbutils.widgets.text("catalog",             "main",          "1. Your catalog (must exist)")
 dbutils.widgets.text("schema",              "geo_fraud_lab", "2. Schema to create")
 # warehouse_http_path is informational only — it is NOT used during installation.
 # You will need it to connect Looker Studio after installation.
