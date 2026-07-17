@@ -1,0 +1,2948 @@
+{
+  "datasets": [
+    {
+      "name": "ds_kpis",
+      "displayName": "ds_kpis",
+      "queryLines": [
+        "SELECT\n",
+        "  ROUND((SELECT SUM(net_amount_usd) FROM {{CATALOG}}.{{SCHEMA}}.fact_orders WHERE year(order_date)=year(current_date()))/1e6,1) AS revenue_ytd_m,\n",
+        "  ROUND((SELECT SUM(net_amount_usd) FROM {{CATALOG}}.{{SCHEMA}}.fact_orders)/1e6,1) AS revenue_life_m,\n",
+        "  (SELECT COUNT(DISTINCT order_id) FROM {{CATALOG}}.{{SCHEMA}}.fact_orders WHERE year(order_date)=year(current_date())) AS orders_ytd,\n",
+        "  (SELECT COUNT(*) FROM {{CATALOG}}.{{SCHEMA}}.dim_account) AS total_accounts,\n",
+        "  ROUND((SELECT SUM(amount_usd) FROM {{CATALOG}}.{{SCHEMA}}.fact_opportunity WHERE is_closed=false)/1e6,1) AS open_pipeline_m,\n",
+        "  ROUND((SELECT 100.0*COUNT_IF(is_won)/NULLIF(COUNT_IF(is_closed),0) FROM {{CATALOG}}.{{SCHEMA}}.fact_opportunity WHERE year(actual_close_date)=year(current_date())),1) AS win_rate_pct,\n",
+        "  (SELECT COUNT(*) FROM {{CATALOG}}.{{SCHEMA}}.vw_account_360 WHERE churn_risk='At Risk') AS at_risk_accounts,\n",
+        "  (SELECT COUNT_IF(is_won) FROM {{CATALOG}}.{{SCHEMA}}.fact_opportunity WHERE year(actual_close_date)=year(current_date())) AS won_deals_ytd"
+      ]
+    },
+    {
+      "name": "ds_orders",
+      "displayName": "ds_orders",
+      "queryLines": [
+        "SELECT o.order_id, o.order_date, date_trunc('MONTH', o.order_date) AS month_start,\n",
+        "  p.business_unit, p.product_family, a.region, a.account_tier, a.account_type, o.channel,\n",
+        "  o.quantity, o.net_amount_usd, o.gross_amount_usd\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.fact_orders o JOIN {{CATALOG}}.{{SCHEMA}}.dim_product p USING (product_id) JOIN {{CATALOG}}.{{SCHEMA}}.dim_account a USING (account_id)"
+      ]
+    },
+    {
+      "name": "ds_opps",
+      "displayName": "ds_opps",
+      "queryLines": [
+        "SELECT o.opportunity_id, a.account_name, a.region, o.business_unit, o.stage,\n",
+        "  o.forecast_category, o.amount_usd, o.loss_reason,\n",
+        "  date_trunc('QUARTER', o.actual_close_date) AS close_quarter,\n",
+        "  CASE WHEN o.is_closed=false THEN o.amount_usd END AS open_amount_usd,\n",
+        "  CASE WHEN o.is_closed=false THEN 1 ELSE 0 END AS open_flag,\n",
+        "  CASE WHEN o.is_won THEN 1 ELSE 0 END AS won_flag,\n",
+        "  CASE WHEN o.is_closed AND NOT o.is_won THEN 1 ELSE 0 END AS lost_flag,\n",
+        "  CASE WHEN o.is_won AND year(o.actual_close_date)=year(current_date()) THEN 1 ELSE 0 END AS won_ytd_flag\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.fact_opportunity o JOIN {{CATALOG}}.{{SCHEMA}}.dim_account a USING (account_id)"
+      ]
+    },
+    {
+      "name": "ds_accounts",
+      "displayName": "ds_accounts",
+      "queryLines": [
+        "SELECT account_name, account_type, segment, region, account_tier,\n",
+        "  lifetime_revenue_usd, revenue_ytd_usd, revenue_ttm_usd, days_since_last_order,\n",
+        "  open_pipeline_usd, open_opps, total_complaints, open_complaints, mdr_complaints,\n",
+        "  whitespace_business_units, churn_risk,\n",
+        "  CASE WHEN churn_risk='At Risk' THEN 1 ELSE 0 END AS is_at_risk\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_account_360"
+      ]
+    },
+    {
+      "name": "ds_complaints",
+      "displayName": "ds_complaints",
+      "queryLines": [
+        "SELECT c.complaint_id, c.date_reported, date_trunc('MONTH', c.date_reported) AS month_start,\n",
+        "  p.business_unit, p.product_name, a.region, c.complaint_category, c.severity,\n",
+        "  c.resolution_status, c.resolution_days,\n",
+        "  CASE WHEN c.is_mdr THEN 1 ELSE 0 END AS mdr_flag,\n",
+        "  CASE WHEN c.resolution_status IN ('Open','Investigating') THEN 1 ELSE 0 END AS open_flag\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.fact_complaint c JOIN {{CATALOG}}.{{SCHEMA}}.dim_product p USING (product_id) JOIN {{CATALOG}}.{{SCHEMA}}.dim_account a USING (account_id)"
+      ]
+    },
+    {
+      "name": "ds_top_accounts",
+      "displayName": "ds_top_accounts",
+      "queryLines": [
+        "SELECT account_name, account_tier, region, ROUND(revenue_ytd_usd,0) AS revenue_ytd_usd,\n",
+        "  ROUND(open_pipeline_usd,0) AS open_pipeline_usd, days_since_last_order, churn_risk\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_account_360 ORDER BY revenue_ytd_usd DESC LIMIT 15"
+      ]
+    },
+    {
+      "name": "ds_at_risk",
+      "displayName": "ds_at_risk",
+      "queryLines": [
+        "SELECT account_name, account_tier, region, ROUND(lifetime_revenue_usd,0) AS lifetime_revenue_usd,\n",
+        "  days_since_last_order, ROUND(open_pipeline_usd,0) AS open_pipeline_usd, whitespace_business_units\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_account_360 WHERE churn_risk='At Risk' ORDER BY lifetime_revenue_usd DESC LIMIT 25"
+      ]
+    },
+    {
+      "name": "ds_mdr_products",
+      "displayName": "ds_mdr_products",
+      "queryLines": [
+        "SELECT p.product_name, p.business_unit, COUNT(*) AS mdr_complaints\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.fact_complaint c JOIN {{CATALOG}}.{{SCHEMA}}.dim_product p USING (product_id)\n",
+        "WHERE c.is_mdr=true GROUP BY p.product_name, p.business_unit ORDER BY mdr_complaints DESC LIMIT 12"
+      ]
+    },
+    {
+      "name": "ds_pipe_kpi",
+      "displayName": "ds_pipe_kpi",
+      "queryLines": [
+        "SELECT\n",
+        "  ROUND(SUM(CASE WHEN is_closed=false THEN amount_usd END)/1e6,1) AS open_pipeline_m,\n",
+        "  ROUND(AVG(amount_usd),0) AS avg_deal_usd\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.fact_opportunity"
+      ]
+    },
+    {
+      "name": "ds_acct_kpi",
+      "displayName": "ds_acct_kpi",
+      "queryLines": [
+        "SELECT\n",
+        "  ROUND(SUM(open_pipeline_usd)/1e6,1) AS open_pipeline_m,\n",
+        "  ROUND(SUM(revenue_ttm_usd)/1e6,1) AS revenue_ttm_m,\n",
+        "  ROUND(AVG(whitespace_business_units),1) AS avg_whitespace\n",
+        "FROM {{CATALOG}}.{{SCHEMA}}.vw_account_360"
+      ]
+    },
+    {
+      "name": "ds_qual_kpi",
+      "displayName": "ds_qual_kpi",
+      "queryLines": [
+        "SELECT ROUND(AVG(resolution_days),0) AS avg_resolution_days FROM {{CATALOG}}.{{SCHEMA}}.fact_complaint"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Sales Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "p1-title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 🩺 MedTech Sales & Customer 360"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-sub",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Net revenue, pipeline and account health for a global medical-device manufacturer. KPIs are full-period / YTD; charts respond to the Region and Business Unit filters."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "k-rev",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "revenue_ytd_m",
+                      "expression": "`revenue_ytd_m`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "revenue_ytd_m",
+                  "displayName": "Net Revenue YTD ($M)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net Revenue YTD ($M)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-orders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "orders_ytd",
+                      "expression": "`orders_ytd`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "orders_ytd",
+                  "displayName": "Orders YTD"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Orders YTD"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-accts",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "total_accounts",
+                      "expression": "`total_accounts`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_accounts",
+                  "displayName": "Active Accounts"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Active Accounts"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-pipe",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "open_pipeline_m",
+                      "expression": "`open_pipeline_m`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "open_pipeline_m",
+                  "displayName": "Open Pipeline ($M)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Pipeline ($M)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-win",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "win_rate_pct",
+                      "expression": "`win_rate_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "win_rate_pct",
+                  "displayName": "Win Rate YTD (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Win Rate YTD (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-risk",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "at_risk_accounts",
+                      "expression": "`at_risk_accounts`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "at_risk_accounts",
+                  "displayName": "At-Risk Accounts"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "At-Risk Accounts"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-h1",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Revenue trend & mix"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "month_start",
+                      "expression": "`month_start`"
+                    },
+                    {
+                      "name": "rev",
+                      "expression": "SUM(`net_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "month_start",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "rev",
+                      "displayName": "Net Revenue"
+                    }
+                  ]
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Monthly Net Revenue"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-bu",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    },
+                    {
+                      "name": "agg_p1_bu",
+                      "expression": "SUM(`net_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "business_unit",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Business Unit"
+                },
+                "y": {
+                  "fieldName": "agg_p1_bu",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Net Revenue"
+                },
+                "color": {
+                  "fieldName": "business_unit",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Business Unit"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net Revenue by Business Unit"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-channel",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "agg_p1_channel",
+                      "expression": "SUM(`net_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "agg_p1_channel",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Value"
+                },
+                "color": {
+                  "fieldName": "channel",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "channel"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue Mix by Channel"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 14,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-region",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    },
+                    {
+                      "name": "agg_p1_region",
+                      "expression": "SUM(`net_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "region",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Region"
+                },
+                "y": {
+                  "fieldName": "agg_p1_region",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Net Revenue"
+                },
+                "color": {
+                  "fieldName": "region",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Region"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net Revenue by Region"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p1-tier",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "account_tier",
+                      "expression": "`account_tier`"
+                    },
+                    {
+                      "name": "agg_p1_tier",
+                      "expression": "SUM(`net_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "account_tier",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Tier"
+                },
+                "y": {
+                  "fieldName": "agg_p1_tier",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Net Revenue"
+                },
+                "color": {
+                  "fieldName": "account_tier",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Tier"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net Revenue by Account Tier"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 20,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "pipeline",
+      "displayName": "Pipeline & Forecast",
+      "layout": [
+        {
+          "widget": {
+            "name": "p2-title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 📈 Pipeline & Forecast"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-sub",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Open opportunities, win/loss and forecast. Filterable by Region and Business Unit."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "k-openpipe",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_pipe_kpi",
+                  "fields": [
+                    {
+                      "name": "open_pipeline_m",
+                      "expression": "`open_pipeline_m`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "open_pipeline_m",
+                  "displayName": "Open Pipeline ($M)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Pipeline ($M)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-openopps",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "agg_openopps",
+                      "expression": "SUM(`open_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_openopps",
+                  "displayName": "Open Opportunities"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Opportunities"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-wonytd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "agg_wonytd",
+                      "expression": "SUM(`won_ytd_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_wonytd",
+                  "displayName": "Won Deals YTD"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Won Deals YTD"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-avgdeal",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_pipe_kpi",
+                  "fields": [
+                    {
+                      "name": "avg_deal_usd",
+                      "expression": "`avg_deal_usd`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_deal_usd",
+                  "displayName": "Avg Deal Size ($)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Deal Size ($)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-lost",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "agg_lost",
+                      "expression": "SUM(`lost_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_lost",
+                  "displayName": "Lost Deals"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Lost Deals"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-wondeals",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "agg_wondeals",
+                      "expression": "SUM(`won_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_wondeals",
+                  "displayName": "Total Won Deals"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Won Deals"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-h1",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Open pipeline"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-stage",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "stage",
+                      "expression": "`stage`"
+                    },
+                    {
+                      "name": "agg_p2_stage",
+                      "expression": "SUM(`open_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "stage",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Stage"
+                },
+                "y": {
+                  "fieldName": "agg_p2_stage",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Open Pipeline"
+                },
+                "color": {
+                  "fieldName": "stage",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Stage"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Pipeline by Stage"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-bu",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    },
+                    {
+                      "name": "agg_p2_bu",
+                      "expression": "SUM(`open_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "business_unit",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Business Unit"
+                },
+                "y": {
+                  "fieldName": "agg_p2_bu",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Open Pipeline"
+                },
+                "color": {
+                  "fieldName": "business_unit",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Business Unit"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Pipeline by Business Unit"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-fcat",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "forecast_category",
+                      "expression": "`forecast_category`"
+                    },
+                    {
+                      "name": "agg_p2_fcat",
+                      "expression": "SUM(`open_amount_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "agg_p2_fcat",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Value"
+                },
+                "color": {
+                  "fieldName": "forecast_category",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "forecast_category"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Pipeline by Forecast Category"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-loss",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "loss_reason",
+                      "expression": "`loss_reason`"
+                    },
+                    {
+                      "name": "agg_p2_loss",
+                      "expression": "SUM(`lost_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "loss_reason",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Loss Reason"
+                },
+                "y": {
+                  "fieldName": "agg_p2_loss",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Lost Deals"
+                },
+                "color": {
+                  "fieldName": "loss_reason",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Loss Reason"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Lost Deals by Reason"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 15,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-h2",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Win / loss by quarter"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p2-winloss",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "close_quarter",
+                      "expression": "`close_quarter`"
+                    },
+                    {
+                      "name": "won",
+                      "expression": "SUM(`won_flag`)"
+                    },
+                    {
+                      "name": "lost",
+                      "expression": "SUM(`lost_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "close_quarter",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Quarter"
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "won",
+                      "displayName": "Won"
+                    },
+                    {
+                      "fieldName": "lost",
+                      "displayName": "Lost"
+                    }
+                  ]
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Won vs Lost Deals by Close Quarter"
+              },
+              "mark": {
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 22,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "accounts",
+      "displayName": "Account Health",
+      "layout": [
+        {
+          "widget": {
+            "name": "p3-title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 🏥 Account Health & Customer 360"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-sub",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Churn risk, tier value, whitespace and top accounts. Region-filterable."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "k-acct-total",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_accounts",
+                  "fields": [
+                    {
+                      "name": "agg_acct_total",
+                      "expression": "COUNT(`account_name`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_acct_total",
+                  "displayName": "Accounts"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Accounts"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-acct-risk",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_accounts",
+                  "fields": [
+                    {
+                      "name": "agg_acct_risk",
+                      "expression": "SUM(`is_at_risk`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_acct_risk",
+                  "displayName": "At-Risk Accounts"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "At-Risk Accounts"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-acct-ttm",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_acct_kpi",
+                  "fields": [
+                    {
+                      "name": "revenue_ttm_m",
+                      "expression": "`revenue_ttm_m`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "revenue_ttm_m",
+                  "displayName": "Revenue TTM ($M)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue TTM ($M)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-acct-pipe",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_acct_kpi",
+                  "fields": [
+                    {
+                      "name": "open_pipeline_m",
+                      "expression": "`open_pipeline_m`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "open_pipeline_m",
+                  "displayName": "Open Pipeline ($M)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Pipeline ($M)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-acct-comp",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_accounts",
+                  "fields": [
+                    {
+                      "name": "agg_acct_comp",
+                      "expression": "SUM(`open_complaints`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_acct_comp",
+                  "displayName": "Open Complaints"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Complaints"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-acct-ws",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_acct_kpi",
+                  "fields": [
+                    {
+                      "name": "avg_whitespace",
+                      "expression": "`avg_whitespace`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_whitespace",
+                  "displayName": "Avg Whitespace BUs"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Whitespace BUs"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-h1",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Risk & value"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-churn",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_accounts",
+                  "fields": [
+                    {
+                      "name": "churn_risk",
+                      "expression": "`churn_risk`"
+                    },
+                    {
+                      "name": "agg_p3_churn",
+                      "expression": "COUNT(`account_name`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "churn_risk",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Churn Risk"
+                },
+                "y": {
+                  "fieldName": "agg_p3_churn",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Accounts"
+                },
+                "color": {
+                  "fieldName": "churn_risk",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Churn Risk"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Accounts by Churn Risk"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-tier",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_accounts",
+                  "fields": [
+                    {
+                      "name": "account_tier",
+                      "expression": "`account_tier`"
+                    },
+                    {
+                      "name": "sum(revenue_ytd_usd)",
+                      "expression": "SUM(`revenue_ytd_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue YTD by Tier"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "account_tier",
+                  "displayName": "Tier",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(revenue_ytd_usd)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "account_tier",
+                  "displayName": "Tier",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-h2",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Top accounts"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-top",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_top_accounts",
+                  "fields": [
+                    {
+                      "name": "account_name",
+                      "expression": "`account_name`"
+                    },
+                    {
+                      "name": "account_tier",
+                      "expression": "`account_tier`"
+                    },
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    },
+                    {
+                      "name": "revenue_ytd_usd",
+                      "expression": "`revenue_ytd_usd`"
+                    },
+                    {
+                      "name": "open_pipeline_usd",
+                      "expression": "`open_pipeline_usd`"
+                    },
+                    {
+                      "name": "days_since_last_order",
+                      "expression": "`days_since_last_order`"
+                    },
+                    {
+                      "name": "churn_risk",
+                      "expression": "`churn_risk`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "account_name",
+                    "displayName": "Account"
+                  },
+                  {
+                    "fieldName": "account_tier",
+                    "displayName": "Tier"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "Region"
+                  },
+                  {
+                    "fieldName": "revenue_ytd_usd",
+                    "displayName": "Revenue YTD"
+                  },
+                  {
+                    "fieldName": "open_pipeline_usd",
+                    "displayName": "Open Pipeline"
+                  },
+                  {
+                    "fieldName": "days_since_last_order",
+                    "displayName": "Days Since Order"
+                  },
+                  {
+                    "fieldName": "churn_risk",
+                    "displayName": "Churn Risk"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top 15 Accounts by Revenue YTD"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-h3",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Accounts at risk"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 23,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p3-risk",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_at_risk",
+                  "fields": [
+                    {
+                      "name": "account_name",
+                      "expression": "`account_name`"
+                    },
+                    {
+                      "name": "account_tier",
+                      "expression": "`account_tier`"
+                    },
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    },
+                    {
+                      "name": "lifetime_revenue_usd",
+                      "expression": "`lifetime_revenue_usd`"
+                    },
+                    {
+                      "name": "days_since_last_order",
+                      "expression": "`days_since_last_order`"
+                    },
+                    {
+                      "name": "open_pipeline_usd",
+                      "expression": "`open_pipeline_usd`"
+                    },
+                    {
+                      "name": "whitespace_business_units",
+                      "expression": "`whitespace_business_units`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "account_name",
+                    "displayName": "Account"
+                  },
+                  {
+                    "fieldName": "account_tier",
+                    "displayName": "Tier"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "Region"
+                  },
+                  {
+                    "fieldName": "lifetime_revenue_usd",
+                    "displayName": "Lifetime Revenue"
+                  },
+                  {
+                    "fieldName": "days_since_last_order",
+                    "displayName": "Days Since Order"
+                  },
+                  {
+                    "fieldName": "open_pipeline_usd",
+                    "displayName": "Open Pipeline"
+                  },
+                  {
+                    "fieldName": "whitespace_business_units",
+                    "displayName": "Whitespace BUs"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "At-Risk Accounts (no order in 180+ days)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 24,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "quality",
+      "displayName": "Service & Quality",
+      "layout": [
+        {
+          "widget": {
+            "name": "p4-title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## 🛡️ Service & Quality (Post-Market)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-sub",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Device complaints and MDR-reportable events. Filterable by Region and Business Unit."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "k-cmp-total",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "agg_cmp_total",
+                      "expression": "COUNT(`complaint_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_cmp_total",
+                  "displayName": "Complaints"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Complaints"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-cmp-mdr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "agg_cmp_mdr",
+                      "expression": "SUM(`mdr_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_cmp_mdr",
+                  "displayName": "MDR-Reportable"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "MDR-Reportable"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-cmp-open",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "agg_cmp_open",
+                      "expression": "SUM(`open_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "agg_cmp_open",
+                  "displayName": "Open Complaints"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Open Complaints"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "k-cmp-res",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_qual_kpi",
+                  "fields": [
+                    {
+                      "name": "avg_resolution_days",
+                      "expression": "`avg_resolution_days`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_resolution_days",
+                  "displayName": "Avg Resolution Days"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Resolution Days"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-h1",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Complaints breakdown"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-cat",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "complaint_category",
+                      "expression": "`complaint_category`"
+                    },
+                    {
+                      "name": "total",
+                      "expression": "COUNT(`complaint_id`)"
+                    },
+                    {
+                      "name": "mdr",
+                      "expression": "SUM(`mdr_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "complaint_category",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Category"
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "total",
+                      "displayName": "Complaints"
+                    },
+                    {
+                      "fieldName": "mdr",
+                      "displayName": "MDR"
+                    }
+                  ]
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Complaints by Category (with MDR)"
+              },
+              "mark": {
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-bu",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    },
+                    {
+                      "name": "agg_p4_bu",
+                      "expression": "COUNT(`complaint_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "business_unit",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Business Unit"
+                },
+                "y": {
+                  "fieldName": "agg_p4_bu",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Complaints"
+                },
+                "color": {
+                  "fieldName": "business_unit",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Business Unit"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Complaints by Business Unit"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-sev",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "severity",
+                      "expression": "`severity`"
+                    },
+                    {
+                      "name": "agg_p4_sev",
+                      "expression": "COUNT(`complaint_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "severity",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Severity"
+                },
+                "y": {
+                  "fieldName": "agg_p4_sev",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Complaints"
+                },
+                "color": {
+                  "fieldName": "severity",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Severity"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Complaints by Severity"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 15,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "month_start",
+                      "expression": "`month_start`"
+                    },
+                    {
+                      "name": "total",
+                      "expression": "COUNT(`complaint_id`)"
+                    },
+                    {
+                      "name": "mdr",
+                      "expression": "SUM(`mdr_flag`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "month_start",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "total",
+                      "displayName": "Complaints"
+                    },
+                    {
+                      "fieldName": "mdr",
+                      "displayName": "MDR"
+                    }
+                  ]
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Complaint Trend (with MDR)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-h2",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Top MDR products"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "p4-mdr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_mdr_products",
+                  "fields": [
+                    {
+                      "name": "product_name",
+                      "expression": "`product_name`"
+                    },
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    },
+                    {
+                      "name": "mdr_complaints",
+                      "expression": "`mdr_complaints`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "product_name",
+                    "displayName": "Product"
+                  },
+                  {
+                    "fieldName": "business_unit",
+                    "displayName": "Business Unit"
+                  },
+                  {
+                    "fieldName": "mdr_complaints",
+                    "displayName": "MDR Complaints"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top Products by MDR-Reportable Complaints"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 27,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "filters",
+      "displayName": "Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "f_region",
+            "queries": [
+              {
+                "name": "f_region_q0",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "f_region_q1",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "f_region_q2",
+                "query": {
+                  "datasetName": "ds_accounts",
+                  "fields": [
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "f_region_q3",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "region",
+                      "expression": "`region`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "region",
+                    "displayName": "Region",
+                    "queryName": "f_region_q0"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "Region",
+                    "queryName": "f_region_q1"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "Region",
+                    "queryName": "f_region_q2"
+                  },
+                  {
+                    "fieldName": "region",
+                    "displayName": "Region",
+                    "queryName": "f_region_q3"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Region"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "f_bu",
+            "queries": [
+              {
+                "name": "f_bu_q0",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "f_bu_q1",
+                "query": {
+                  "datasetName": "ds_opps",
+                  "fields": [
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "f_bu_q2",
+                "query": {
+                  "datasetName": "ds_complaints",
+                  "fields": [
+                    {
+                      "name": "business_unit",
+                      "expression": "`business_unit`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "business_unit",
+                    "displayName": "Business Unit",
+                    "queryName": "f_bu_q0"
+                  },
+                  {
+                    "fieldName": "business_unit",
+                    "displayName": "Business Unit",
+                    "queryName": "f_bu_q1"
+                  },
+                  {
+                    "fieldName": "business_unit",
+                    "displayName": "Business Unit",
+                    "queryName": "f_bu_q2"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Business Unit"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 2,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
+    },
+    {
+      "name": "f26fd042",
+      "displayName": "Pivot Analysis",
+      "layout": [
+        {
+          "widget": {
+            "name": "pivot_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_orders",
+                  "fields": [
+                    {
+                      "name": "$Rows",
+                      "variable": "Rows"
+                    },
+                    {
+                      "name": "$col_dim",
+                      "variable": "col_dim"
+                    },
+                    {
+                      "name": "$Columns",
+                      "variable": "Columns"
+                    }
+                  ],
+                  "cubeGroupingSets": {
+                    "sets": [
+                      {
+                        "fieldNames": [
+                          "$Rows"
+                        ]
+                      },
+                      {
+                        "fieldNames": [
+                          "$col_dim"
+                        ]
+                      }
+                    ]
+                  },
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue Pivot"
+              },
+              "version": 3,
+              "widgetType": "pivot",
+              "encodings": {
+                "rows": [
+                  {
+                    "fieldName": "$Rows",
+                    "scale": {
+                      "type": "categorical"
+                    }
+                  }
+                ],
+                "columns": [
+                  {
+                    "fieldName": "$col_dim",
+                    "scale": {
+                      "type": "categorical"
+                    }
+                  }
+                ],
+                "cell": {
+                  "type": "single-cell",
+                  "fieldName": "$Columns",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "8e98fc7d",
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Row Dimension"
+              },
+              "disallowAll": true,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "variableName": "Rows"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "6fddb903",
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Column Dimension"
+              },
+              "disallowAll": true,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "variableName": "col_dim"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "ctrl_measure",
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Measure"
+              },
+              "disallowAll": true,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "variableName": "Columns"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  },
+  "variables": [
+    {
+      "name": "Rows",
+      "displayName": "Rows",
+      "field": {
+        "options": [
+          {
+            "expression": "`ds_orders`.`account_tier`"
+          },
+          {
+            "expression": "`ds_orders`.`account_type`"
+          },
+          {
+            "expression": "`ds_orders`.`business_unit`"
+          },
+          {
+            "expression": "`ds_orders`.`channel`"
+          },
+          {
+            "expression": "`ds_orders`.`order_id`"
+          },
+          {
+            "expression": "`ds_orders`.`product_family`"
+          },
+          {
+            "expression": "`ds_orders`.`region`"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Columns",
+      "displayName": "Columns",
+      "field": {
+        "options": [
+          {
+            "expression": "SUM(`ds_orders`.`gross_amount_usd`)"
+          },
+          {
+            "expression": "SUM(`ds_orders`.`net_amount_usd`)"
+          },
+          {
+            "expression": "SUM(`ds_orders`.`quantity`)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "col_dim",
+      "displayName": "col_dim",
+      "field": {
+        "options": [
+          {
+            "expression": "`ds_orders`.`region`"
+          },
+          {
+            "expression": "`ds_orders`.`business_unit`"
+          },
+          {
+            "expression": "`ds_orders`.`channel`"
+          },
+          {
+            "expression": "`ds_orders`.`account_tier`"
+          },
+          {
+            "expression": "`ds_orders`.`product_family`"
+          }
+        ]
+      }
+    }
+  ]
+}

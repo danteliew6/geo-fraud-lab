@@ -1,0 +1,678 @@
+{
+  "datasets": [
+    {
+      "name": "ds_kpi",
+      "displayName": "Portfolio KPIs",
+      "queryLines": [
+        "SELECT (SELECT SUM(principal_amount)/1e9 FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS total_disbursed_bn, (SELECT COUNT(DISTINCT customer_id) FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS active_borrowers, (SELECT 100*SUM(CASE WHEN dpd>90 THEN outstanding_principal ELSE 0 END)/NULLIF(SUM(outstanding_principal),0) FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS npl_pct, (SELECT 100*AVG(CASE WHEN decision='approved' THEN 1.0 ELSE 0.0 END) FROM {{CATALOG}}.{{SCHEMA}}.fact_loan_application) AS approval_pct, (SELECT SUM(outstanding_principal)/1e9 FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS outstanding_bn, (SELECT AVG(principal_amount)/1e6 FROM {{CATALOG}}.{{SCHEMA}}.fact_loan) AS avg_loan_mn"
+      ]
+    },
+    {
+      "name": "ds_monthly",
+      "displayName": "Monthly Disbursement",
+      "queryLines": [
+        "SELECT DATE_TRUNC('MONTH', disbursement_date) AS mth, SUM(principal_amount)/1e9 AS disbursed_bn, COUNT(*) AS loans FROM {{CATALOG}}.{{SCHEMA}}.fact_loan GROUP BY 1 ORDER BY 1"
+      ]
+    },
+    {
+      "name": "ds_province",
+      "displayName": "Portfolio by Province",
+      "queryLines": [
+        "SELECT c.province AS province, SUM(l.principal_amount)/1e9 AS disbursed_bn, SUM(l.outstanding_principal)/1e9 AS outstanding_bn FROM {{CATALOG}}.{{SCHEMA}}.fact_loan l JOIN {{CATALOG}}.{{SCHEMA}}.dim_customer c ON l.customer_id=c.customer_id GROUP BY c.province"
+      ]
+    },
+    {
+      "name": "ds_npl_product",
+      "displayName": "NPL by Product",
+      "queryLines": [
+        "SELECT CONCAT('Tunaiku ', p.tenor_months, 'mo') AS product, 100*SUM(CASE WHEN l.dpd>90 THEN l.outstanding_principal ELSE 0 END)/NULLIF(SUM(l.outstanding_principal),0) AS npl_pct FROM {{CATALOG}}.{{SCHEMA}}.fact_loan l JOIN {{CATALOG}}.{{SCHEMA}}.dim_product p ON l.product_id=p.product_id GROUP BY p.tenor_months, product"
+      ]
+    },
+    {
+      "name": "ds_channel",
+      "displayName": "Approval Rate by Channel",
+      "queryLines": [
+        "SELECT c.acquisition_channel AS channel, 100*AVG(CASE WHEN a.decision='approved' THEN 1.0 ELSE 0.0 END) AS approval_pct FROM {{CATALOG}}.{{SCHEMA}}.fact_loan_application a JOIN {{CATALOG}}.{{SCHEMA}}.dim_customer c ON a.customer_id=c.customer_id GROUP BY c.acquisition_channel"
+      ]
+    },
+    {
+      "name": "ds_status",
+      "displayName": "Loan Status Mix",
+      "queryLines": [
+        "SELECT status, COUNT(*) AS loans FROM {{CATALOG}}.{{SCHEMA}}.fact_loan GROUP BY status"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# 🏦 Tunaiku Lending 360 — Amar Bank"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "subtitle",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Unsecured personal lending — portfolio, risk & acquisition analytics (IDR). Synthetic workshop data."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-disbursed",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi",
+                  "fields": [
+                    {
+                      "name": "total_disbursed_bn",
+                      "expression": "`total_disbursed_bn`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_disbursed_bn",
+                  "displayName": "Total Disbursed (IDR bn)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Disbursed (IDR bn)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-borrowers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi",
+                  "fields": [
+                    {
+                      "name": "active_borrowers",
+                      "expression": "`active_borrowers`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "active_borrowers",
+                  "displayName": "Active Borrowers"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Active Borrowers"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-npl",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi",
+                  "fields": [
+                    {
+                      "name": "npl_pct",
+                      "expression": "`npl_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "npl_pct",
+                  "displayName": "NPL Ratio (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "NPL Ratio (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-approval",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi",
+                  "fields": [
+                    {
+                      "name": "approval_pct",
+                      "expression": "`approval_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "approval_pct",
+                  "displayName": "Approval Rate (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Approval Rate (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-outstanding",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi",
+                  "fields": [
+                    {
+                      "name": "outstanding_bn",
+                      "expression": "`outstanding_bn`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "outstanding_bn",
+                  "displayName": "Outstanding Principal (IDR bn)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Outstanding Principal (IDR bn)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-avgloan",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi",
+                  "fields": [
+                    {
+                      "name": "avg_loan_mn",
+                      "expression": "`avg_loan_mn`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_loan_mn",
+                  "displayName": "Avg Loan Size (IDR mn)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Loan Size (IDR mn)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "hdr-trend",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Portfolio Trends & Distribution"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "w-trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_monthly",
+                  "fields": [
+                    {
+                      "name": "mth",
+                      "expression": "`mth`"
+                    },
+                    {
+                      "name": "sum(disbursed_bn)",
+                      "expression": "SUM(`disbursed_bn`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "mth",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "sum(disbursed_bn)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Disbursed (IDR bn)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Monthly Disbursement Trend"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w-province",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_province",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "sum(disbursed_bn)",
+                      "expression": "SUM(`disbursed_bn`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "province",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Province"
+                },
+                "y": {
+                  "fieldName": "sum(disbursed_bn)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Disbursed (IDR bn)"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Portfolio by Province"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621",
+                  "#FFAB00",
+                  "#00A972",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w-nplprod",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_npl_product",
+                  "fields": [
+                    {
+                      "name": "product",
+                      "expression": "`product`"
+                    },
+                    {
+                      "name": "sum(npl_pct)",
+                      "expression": "SUM(`npl_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "product",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Product"
+                },
+                "y": {
+                  "fieldName": "sum(npl_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "NPL Ratio (%)"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "NPL by Product"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621",
+                  "#FFAB00",
+                  "#00A972",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 15,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w-channel",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_channel",
+                  "fields": [
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "sum(approval_pct)",
+                      "expression": "SUM(`approval_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "channel",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Acquisition Channel"
+                },
+                "y": {
+                  "fieldName": "sum(approval_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Approval Rate (%)"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Approval Rate by Acquisition Channel"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621",
+                  "#FFAB00",
+                  "#00A972",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w-status",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_status",
+                  "fields": [
+                    {
+                      "name": "sum(loans)",
+                      "expression": "SUM(`loans`)"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "sum(loans)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Loans"
+                },
+                "color": {
+                  "fieldName": "status",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Status"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Loan Status Mix"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621",
+                  "#FFAB00",
+                  "#00A972",
+                  "#8BCAE7",
+                  "#AB4057",
+                  "#99DDB4"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 21,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    }
+  }
+}
