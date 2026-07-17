@@ -9,28 +9,36 @@
 # MAGIC 3. Builds the full gold star schema with H3 geospatial index, fraud-signal views, and a governed Metric View
 # MAGIC 4. Prints a verification summary
 # MAGIC
-# MAGIC **Requirements:** Unity Catalog enabled · Photon or serverless SQL warehouse (required for H3/spatial SQL)
+# MAGIC **Requirements:** Unity Catalog enabled
+# MAGIC
+# MAGIC ⚠️ Cluster requirement: Run this notebook on a **Serverless cluster** or **DBR 17.3+ LTS** cluster.
+# MAGIC ST_ geospatial functions and Metric Views are not available on older runtimes.
 
 # COMMAND ----------
 
 # DBTITLE 1,Step 1: Configure (fill in the widgets, then Run All)
-dbutils.widgets.text("catalog",      "",              "1. Your catalog (must exist)")
-dbutils.widgets.text("schema",       "geo_fraud_lab", "2. Schema to create")
-dbutils.widgets.text("warehouse_id", "",              "3. SQL warehouse ID")
+dbutils.widgets.text("catalog",             "",              "1. Your catalog (must exist)")
+dbutils.widgets.text("schema",              "geo_fraud_lab", "2. Schema to create")
+# warehouse_http_path is informational only — it is NOT used during installation.
+# You will need it to connect Looker Studio after installation.
+# Find it in: Settings → SQL Warehouses → <your warehouse> → Connection details → HTTP Path
+dbutils.widgets.text("warehouse_http_path", "",              "3. SQL warehouse HTTP path (optional — for Looker Studio)")
 
 # COMMAND ----------
 
 # DBTITLE 1,Step 2: Validate config
-catalog      = dbutils.widgets.get("catalog")
-schema       = dbutils.widgets.get("schema")
-warehouse_id = dbutils.widgets.get("warehouse_id")
+catalog            = dbutils.widgets.get("catalog")
+schema             = dbutils.widgets.get("schema")
+warehouse_http_path = dbutils.widgets.get("warehouse_http_path")
 
 if not catalog:
     raise ValueError("❌ Please set 'Your catalog' widget above and click Run All.")
-if not warehouse_id:
-    raise ValueError("❌ Please set 'SQL warehouse ID' widget above and click Run All.")
 
-print(f"✅ Target: {catalog}.{schema}  |  Warehouse: {warehouse_id}")
+print(f"✅ Target: {catalog}.{schema}")
+if warehouse_http_path:
+    print(f"   Looker Studio HTTP Path: {warehouse_http_path}")
+else:
+    print("   (warehouse_http_path not set — fill it in later for Looker Studio connection)")
 
 # COMMAND ----------
 
@@ -160,10 +168,9 @@ for table in core_tables:
 views = [
     "vw_fraud_signals",
     "vw_fraud_hotspots",
-    "vw_geo_analysis",
-    "vw_distance_bands",
-    "vw_ls_portfolio",
-    "vw_ls_fraud_map",
+    "vw_geo_distance_bands",
+    "vw_ls_portfolio_overview",
+    "vw_ls_fraud_hotspots",
 ]
 print()
 for view in views:
@@ -176,15 +183,18 @@ for view in views:
 
 print()
 try:
-    row = spark.sql(f"SELECT fraud_rate, npl_ratio FROM {catalog}.{schema}.metrics_lending LIMIT 1").collect()
-    if row:
-        fraud_rate = row[0]["fraud_rate"]
-        npl_ratio  = row[0]["npl_ratio"]
-        print(f"  ✅  metrics_lending — fraud_rate: {fraud_rate:.1%}  |  npl_ratio: {npl_ratio:.1%}")
+    result = spark.sql(f"""
+        SELECT MEASURE(fraud_rate) AS fraud_rate, MEASURE(npl_ratio) AS npl_ratio
+        FROM {catalog}.{schema}.metrics_lending
+        LIMIT 1
+    """).collect()
+    if result:
+        print(f"  ✅  metrics_lending: fraud_rate={result[0]['fraud_rate']:.1%}, npl_ratio={result[0]['npl_ratio']:.1%}")
     else:
-        print("  ⚠️   metrics_lending returned no rows")
+        print("  ⚠️  metrics_lending: no rows returned")
 except Exception as e:
-    print(f"  ❌  metrics_lending: {e}")
+    print(f"  ⚠️  metrics_lending (metric view): {e}")
+    print("     (If this fails, the metric view may need a DBR 17.3+ cluster — all other objects are fine)")
 
 # COMMAND ----------
 
@@ -206,3 +216,13 @@ except Exception as e:
 # MAGIC - Connect **Looker Studio** (or any BI tool) to your workspace SQL warehouse and point it at the schema above.
 # MAGIC - See [`docs/looker_studio_integration.md`](https://github.com/danteliew6/geo-fraud-lab/blob/main/docs/looker_studio_integration.md) for step-by-step setup.
 # MAGIC - Explore fraud signals: `SELECT * FROM {catalog}.{schema}.vw_fraud_signals LIMIT 100`
+
+# COMMAND ----------
+
+# Connection info for Looker Studio
+http_path = dbutils.widgets.get("warehouse_http_path")
+print(f"✅ Schema: {catalog}.{schema}")
+if http_path:
+    print(f"  Looker Studio HTTP Path: {http_path}")
+else:
+    print("  Looker Studio HTTP Path: (not set — find it in Settings → SQL Warehouses → Connection details)")

@@ -27,13 +27,14 @@ Fraud is driven by **geospatial signals only**: impossible travel, location mism
    ```
    https://raw.githubusercontent.com/danteliew6/geo-fraud-lab/main/notebooks/install_lab.py
    ```
-4. Open the imported notebook on a running cluster
-5. Fill in the three widgets: **catalog** (must exist), **schema** (default: `geo_fraud_lab`), **warehouse ID**
+4. Open the imported notebook
+4a. Attach a **Serverless** or **DBR 17.3+** cluster
+5. Fill in the widgets: **catalog** (must exist), **schema** (default: `geo_fraud_lab`), and optionally **warehouse HTTP path** (for Looker Studio — not needed for installation)
 6. Click **Run All**
 
 The notebook downloads the data files from GitHub, generates the dataset, builds all tables and views, and prints a verification summary.
 
-> **Finding your warehouse ID:** In your workspace, go to **Settings → SQL Warehouses** → click your warehouse → **Connection details** → copy the value after `/sql/1.0/warehouses/`.
+> **Finding your warehouse HTTP path:** In your workspace, go to **Settings → SQL Warehouses** → click your warehouse → **Connection details** → copy the **HTTP path** value (e.g. `/sql/1.0/warehouses/abc123`). You will need this to connect Looker Studio after installation.
 
 ---
 
@@ -41,7 +42,7 @@ The notebook downloads the data files from GitHub, generates the dataset, builds
 
 - Databricks workspace with **Unity Catalog** enabled
 - An existing **catalog** you can create schemas in (the schema is created for you)
-- A **Photon-enabled or serverless SQL warehouse** — required for H3 (`h3_longlatash3string`) and spatial (`ST_DistanceSphere`) functions
+- A **Serverless cluster** or **DBR 17.3+ LTS cluster** — required for ST_ geospatial functions and Metric Views
 
 ---
 
@@ -148,8 +149,7 @@ geo-fraud-lab/
 ## Known issues / notes
 
 - **Distance-band fraud rate**: fraud probability rises sharply with distance from home province but is **probabilistic** (~65–78% above 50 km), not a hard rule — legitimate long-distance loans exist.
-- **H3 functions** (`h3_longlatash3string`, `h3_tochildren`) require a Photon-enabled or serverless SQL warehouse. Standard non-Photon warehouses will error on the H3 steps.
-- **Metric View** (`metrics_lending`) requires Unity Catalog and DBR 14.1+ (or serverless).
+- **ST_ / H3 functions** (`ST_DistanceSphere`, `h3_longlatash3string`) and **Metric Views** require a **Serverless cluster** or **DBR 17.3+ LTS**. Older runtimes will error on the geo/metric view steps.
 
 ---
 
