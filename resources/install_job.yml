@@ -21,16 +21,6 @@ resources:
               schema: ${var.schema}
           environment_key: serverless
 
-        - task_key: deploy_dashboard
-          depends_on:
-            - task_key: run_sql
-          notebook_task:
-            notebook_path: ../notebooks/03_deploy_dashboard.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-          environment_key: serverless
-
       environments:
         - environment_key: serverless
           spec:

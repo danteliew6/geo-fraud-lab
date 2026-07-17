@@ -11,6 +11,9 @@ variables:
   schema:
     description: "Schema to create (auto-created)"
     default: geo_fraud_lab
+  warehouse_id:
+    description: "SQL warehouse ID for the dashboard (find in SQL Warehouses > Connection details)"
+    default: ""
 
 targets:
   dev:
