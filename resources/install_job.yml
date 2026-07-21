@@ -24,8 +24,3 @@ resources:
               # no GitHub fetch and no SQL-warehouse dependency.
               sql_path: ${workspace.file_path}
           environment_key: serverless
-
-      environments:
-        - environment_key: serverless
-          spec:
-            client: "1"
